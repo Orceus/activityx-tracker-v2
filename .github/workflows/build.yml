@@ -67,8 +67,8 @@ jobs:
       - name: Copy supporting files
         run: |
           cp config.py dist/config.py
-          cp setup_mac.sh dist/setup_mac.sh
-          chmod +x dist/setup_mac.sh
+          cp setup_mac.command dist/setup_mac.command
+          chmod +x dist/setup_mac.command
 
       - name: Sign and notarize (macOS)
         env:
