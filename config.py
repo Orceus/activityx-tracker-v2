@@ -5,12 +5,11 @@ Before distributing to a client, fill in their LAW_FIRM_ID from Supabase.
 """
 
 # ── Supabase credentials ───────────────────────────────────────────────────────
-SUPABASE_URL = ""   # e.g. "https://xxxxxxxxxxxx.supabase.co"
-SUPABASE_KEY = ""   # anon/public key
+SUPABASE_URL = "https://mwctncfrjjgxbusdlfqt.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13Y3RuY2ZyampneGJ1c2RsZnF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjA2NzcsImV4cCI6MjA4Njk5NjY3N30.FWydfEXukHE_vrss8fvs3J3s-kdxwSVjFx02Dl5hRjA"
 
 # ── Client identifier ─────────────────────────────────────────────────────────
-# Copy the UUID from the law_firms table in Supabase and paste it here
-# before distributing this build to the client.
+# Only change this per client — copy the UUID from the law_firms table in Supabase.
 LAW_FIRM_ID = ""    # e.g. "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
 # ── Tracking settings ─────────────────────────────────────────────────────────
