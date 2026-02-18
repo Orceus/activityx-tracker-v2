@@ -1,0 +1,121 @@
+name: Build Employee Tracker
+
+on:
+  push:
+    tags:
+      - "v*"           # trigger on version tags: git tag v1.0.0 && git push --tags
+  workflow_dispatch:   # also allow manual runs from the GitHub Actions tab
+
+jobs:
+  # ── Windows build ────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build activity_tracker.exe
+        run: pyinstaller activity_tracker.spec
+
+      - name: Build activity_tracker_controller.exe
+        run: pyinstaller activity_tracker_controller.spec
+
+      - name: Copy supporting files
+        run: |
+          copy config.py dist\config.py
+          copy requirements.txt dist\requirements.txt
+          if exist keytrk_data xcopy keytrk_data dist\keytrk_data\ /E /I /Y
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ActivityX-Windows
+          path: dist/
+          retention-days: 30
+
+  # ── macOS build ──────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build activity_tracker (macOS)
+        run: pyinstaller activity_tracker.spec
+
+      - name: Copy supporting files
+        run: |
+          cp config.py dist/config.py
+          cp requirements.txt dist/requirements.txt
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ActivityX-macOS
+          path: dist/
+          retention-days: 30
+
+  # ── Create GitHub Release with both builds ───────────────────────────────────
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: ActivityX-Windows
+          path: release/windows
+
+      - name: Download macOS build
+        uses: actions/download-artifact@v4
+        with:
+          name: ActivityX-macOS
+          path: release/macos
+
+      - name: Zip releases
+        run: |
+          cd release
+          zip -r ActivityX-Windows-${{ github.ref_name }}.zip windows/
+          zip -r ActivityX-macOS-${{ github.ref_name }}.zip macos/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/ActivityX-Windows-${{ github.ref_name }}.zip
+            release/ActivityX-macOS-${{ github.ref_name }}.zip
+          body: |
+            ## ActivityX Employee Tracker ${{ github.ref_name }}
+
+            ### Installation
+            1. Download the zip for your platform
+            2. Extract to any folder
+            3. Run `activity_tracker.exe` (Windows) or `activity_tracker` (macOS)
+            4. On first run, enter your law firm name when prompted
+            5. The tracker will start automatically on every system restart
+
+            ### First run
+            You must add your law firm name in the ActivityX web app **before** running the tracker.
