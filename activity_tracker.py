@@ -2585,6 +2585,29 @@ class ActivityTracker:
                 activity_type = "Desktop" if is_desktop else "App"
                 self.log(f" {activity_type} session: {time_formatted} | Clicks: {input_stats['clicks']} | Keys: {input_stats['keystrokes']}")
 
+def _load_config():
+    """
+    Load config.py from the same directory as the executable.
+    This keeps config.py external (not bundled) so you can swap it
+    per client without recompiling.
+    """
+    import importlib.util
+
+    # When frozen by PyInstaller, sys.executable is the .exe path.
+    # When running as a plain script, use __file__.
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    config_path = os.path.join(base_dir, 'config.py')
+
+    spec = importlib.util.spec_from_file_location("config", config_path)
+    cfg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cfg)
+    return cfg
+
+
 def main():
     """Main function to run the activity tracker"""
     SUPABASE_URL = None
@@ -2593,12 +2616,12 @@ def main():
     SILENT_MODE = True
 
     try:
-        import config
+        config = _load_config()
         SUPABASE_URL = config.SUPABASE_URL
         SUPABASE_KEY = config.SUPABASE_KEY
         LAW_FIRM_ID = getattr(config, 'LAW_FIRM_ID', None)
         SILENT_MODE = getattr(config, 'SILENT_MODE', True)
-    except ImportError:
+    except Exception:
         SUPABASE_URL = os.getenv('SUPABASE_URL')
         SUPABASE_KEY = os.getenv('SUPABASE_KEY')
         LAW_FIRM_ID = os.getenv('LAW_FIRM_ID')

@@ -7,28 +7,33 @@ from pathlib import Path
 
 # Supabase import
 try:
-    from supabase import create_client, Client
+    from supabase import create_client
 except ImportError:
     print("Warning: Supabase client not available. Install with: pip install supabase")
     create_client = None
 
-# Load Supabase credentials from config.py (same as tracker)
+def _load_config():
+    """Load config.py from the same directory as the executable."""
+    import importlib.util
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    spec = importlib.util.spec_from_file_location("config", os.path.join(base_dir, 'config.py'))
+    cfg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cfg)
+    return cfg
+
+
 try:
-    import config
-    SUPABASE_URL = config.SUPABASE_URL
-    SUPABASE_KEY = config.SUPABASE_KEY
-except ImportError:
+    _cfg = _load_config()
+    SUPABASE_URL = _cfg.SUPABASE_URL
+    SUPABASE_KEY = _cfg.SUPABASE_KEY
+    LAW_FIRM_ID = getattr(_cfg, 'LAW_FIRM_ID', None)
+except Exception:
     SUPABASE_URL = os.getenv('SUPABASE_URL', '')
     SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
-
-
-def get_law_firm_id():
-    """Read the saved law_firm_id UUID from keytrk_data/law_firm_id.txt"""
-    law_firm_file = Path("keytrk_data") / "law_firm_id.txt"
-    if law_firm_file.exists():
-        value = law_firm_file.read_text(encoding="utf-8").strip()
-        return value if value else None
-    return None
+    LAW_FIRM_ID = os.getenv('LAW_FIRM_ID', None)
 
 
 def init_supabase_client():
@@ -58,7 +63,7 @@ def upload_optimized_batches():
         print("Cannot upload batches: Supabase client not available")
         return
 
-    law_firm_id = get_law_firm_id()
+    law_firm_id = LAW_FIRM_ID
     successful_uploads = []
 
     for batch_file in sorted(batch_files):
