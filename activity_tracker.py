@@ -733,7 +733,7 @@ class OptimizedDataSyncer:
     def __init__(self, supabase_url=None, supabase_key=None, law_firm_id=None):
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
-        self.law_firm_id = law_firm_id
+        self.law_firm_id = law_firm_id if law_firm_id else None  # empty string → NULL
         self.supabase_client = None
         self.data_directory = Path("keytrk_data")
         self.data_directory.mkdir(exist_ok=True)

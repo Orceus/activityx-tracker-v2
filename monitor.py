@@ -29,11 +29,11 @@ try:
     _cfg = _load_config()
     SUPABASE_URL = _cfg.SUPABASE_URL
     SUPABASE_KEY = _cfg.SUPABASE_KEY
-    LAW_FIRM_ID = getattr(_cfg, 'LAW_FIRM_ID', None)
+    LAW_FIRM_ID = getattr(_cfg, 'LAW_FIRM_ID', None) or None  # empty string → None
 except Exception:
     SUPABASE_URL = os.getenv('SUPABASE_URL', '')
     SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
-    LAW_FIRM_ID = os.getenv('LAW_FIRM_ID', None)
+    LAW_FIRM_ID = os.getenv('LAW_FIRM_ID', None) or None
 
 
 def init_supabase_client():
