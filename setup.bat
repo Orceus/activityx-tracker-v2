@@ -1,57 +1,46 @@
 @echo off
+chcp 65001 >nul
+setlocal enabledelayedexpansion
+
 echo ========================================
-echo KeyTRK Activity Tracker Setup
+echo    ActivityX Setup
 echo ========================================
 echo.
 
-REM Get current directory
-set "INSTALL_DIR=%~dp0"
-cd /d "%INSTALL_DIR%"
+set "INSTALL_DIR=%USERPROFILE%\Documents\ActivityX"
+set "SETUP_DIR=%~dp0"
 
-REM Check if Python is installed
-echo 1. Checking Python installation...
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo    Python not found. Installing Python...
-    if exist "python-installer.exe" (
-        python-installer.exe /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
-        echo    Python installed successfully
-    ) else (
-        echo    ERROR: python-installer.exe not found
-        pause
-        exit /b 1
-    )
-) else (
-    echo    Python already installed
-)
+echo Creating installation directory...
+if not exist "!INSTALL_DIR!" mkdir "!INSTALL_DIR!"
 
-REM Install Python dependencies
-echo 2. Installing Python dependencies...
-if exist "requirements.txt" (
-    pip install -r requirements.txt --quiet
-    echo    Dependencies installed
-) else (
-    echo    WARNING: requirements.txt not found, skipping dependencies
-)
+echo Copying files...
+copy /Y "!SETUP_DIR!activity_tracker.exe"            "!INSTALL_DIR!\" >nul
+copy /Y "!SETUP_DIR!activity_tracker_controller.exe" "!INSTALL_DIR!\" >nul
+copy /Y "!SETUP_DIR!config.py"                       "!INSTALL_DIR!\" >nul
 
-REM Test if the tracker works
-echo 3. Testing tracker...
-if exist "run_completely_hidden.vbs" (
-    echo    Tracker found and ready
-) else (
-    echo    ERROR: run_completely_hidden.vbs not found
+if not exist "!INSTALL_DIR!\activity_tracker.exe" (
+    echo ERROR: Failed to copy files. Try running as Administrator.
     pause
     exit /b 1
 )
 
+echo Creating startup shortcuts...
+set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+
+powershell -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s1 = $ws.CreateShortcut('!STARTUP!\ActivityXTracker.lnk'); $s1.TargetPath = '!INSTALL_DIR!\activity_tracker.exe'; $s1.WorkingDirectory = '!INSTALL_DIR!'; $s1.Save(); $s2 = $ws.CreateShortcut('!STARTUP!\ActivityXController.lnk'); $s2.TargetPath = '!INSTALL_DIR!\activity_tracker_controller.exe'; $s2.WorkingDirectory = '!INSTALL_DIR!'; $s2.Save()" >nul 2>&1
+
+echo Starting tracker...
+pushd "!INSTALL_DIR!"
+start "" "activity_tracker.exe"
+timeout /t 2 /nobreak >nul
+start "" "activity_tracker_controller.exe"
+popd
+
 echo.
 echo ========================================
-echo SETUP COMPLETE!
+echo    Installation complete!
 echo ========================================
-echo.
-echo The KeyTRK Activity Tracker is now installed.
-echo.
-echo To run the tracker:
-echo - Double-click: run_completely_hidden.vbs
+echo Installed to: !INSTALL_DIR!
+echo The tracker will now start automatically on every Windows login.
 echo.
 pause

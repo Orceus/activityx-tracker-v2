@@ -33,7 +33,7 @@ jobs:
       - name: Copy supporting files
         run: |
           copy config.py dist\config.py
-          copy requirements.txt dist\requirements.txt
+          copy setup.bat dist\setup.bat
           if exist keytrk_data xcopy keytrk_data dist\keytrk_data\ /E /I /Y
 
       - name: Upload Windows artifacts
@@ -110,12 +110,11 @@ jobs:
           body: |
             ## ActivityX Employee Tracker ${{ github.ref_name }}
 
-            ### Installation
-            1. Download the zip for your platform
-            2. Extract to any folder
-            3. Run `activity_tracker.exe` (Windows) or `activity_tracker` (macOS)
-            4. On first run, enter your law firm name when prompted
-            5. The tracker will start automatically on every system restart
+            ### Before distributing
+            1. Open `config.py` and fill in `SUPABASE_URL`, `SUPABASE_KEY`, and `LAW_FIRM_ID`
+            2. Zip the folder and send to the client
 
-            ### First run
-            You must add your law firm name in the ActivityX web app **before** running the tracker.
+            ### Client installation (Windows)
+            1. Extract the zip
+            2. Run `setup.bat` — installs to Documents\ActivityX and adds to Windows startup
+            3. Done — tracker runs silently in the background from now on
