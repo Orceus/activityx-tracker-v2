@@ -96,13 +96,22 @@ def upload_single_batch(supabase_client, file_path, law_firm_id=None):
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
+        date_str = data.get('d')
+        start_str = data.get('s')
+        end_str = data.get('e')
+        # Convert time-only strings (HH:MM:SS) to full timestamptz (YYYY-MM-DDTHH:MM:SS)
+        if date_str and start_str and 'T' not in str(start_str):
+            start_str = f"{date_str}T{start_str}"
+        if date_str and end_str and 'T' not in str(end_str):
+            end_str = f"{date_str}T{end_str}"
+
         insert_data = {
             'batch_id': file_path.stem,
             'user_id': data.get('u'),
             'law_firm_id': law_firm_id,
-            'date_tracked': data.get('d'),
-            'batch_start_time': data.get('s'),
-            'batch_end_time': data.get('e'),
+            'date_tracked': date_str,
+            'batch_start_time': start_str,
+            'batch_end_time': end_str,
             'total_time_seconds': data.get('tt', 0),
             'active_time_seconds': data.get('at', 0),
             'inactive_time_seconds': data.get('it', 0),

@@ -948,13 +948,20 @@ class OptimizedDataSyncer:
         batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Prepare data for database
+        _date = optimized_data['d']
+        _start = optimized_data['s']
+        _end = optimized_data['e']
+        if _date and _start and 'T' not in str(_start):
+            _start = f"{_date}T{_start}"
+        if _date and _end and 'T' not in str(_end):
+            _end = f"{_date}T{_end}"
         db_data = {
             'batch_id': batch_id,
             'user_id': self.user_id,
             'law_firm_id': self.law_firm_id,
-            'date_tracked': optimized_data['d'],
-            'batch_start_time': optimized_data['s'],
-            'batch_end_time': optimized_data['e'],
+            'date_tracked': _date,
+            'batch_start_time': _start,
+            'batch_end_time': _end,
             'total_time_seconds': optimized_data['tt'],
             'active_time_seconds': optimized_data['at'],
             'inactive_time_seconds': optimized_data['it'],
@@ -965,7 +972,7 @@ class OptimizedDataSyncer:
         if self.supabase_client:
             try:
                 result = self.supabase_client.table('activity_summary').insert(db_data).execute()
-                
+
                 if result.data:
                     # Show sync status
                     apps_count = len(optimized_data.get('ap', {}))
@@ -1333,13 +1340,20 @@ class OptimizedDataSyncer:
         batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Prepare data for database - only include fields that exist in the schema
+        _date = optimized_data['d']
+        _start = optimized_data['s']
+        _end = optimized_data['e']
+        if _date and _start and 'T' not in str(_start):
+            _start = f"{_date}T{_start}"
+        if _date and _end and 'T' not in str(_end):
+            _end = f"{_date}T{_end}"
         db_data = {
             'batch_id': batch_id,
             'user_id': self.user_id,
             'law_firm_id': self.law_firm_id,
-            'date_tracked': optimized_data['d'],
-            'batch_start_time': optimized_data['s'],
-            'batch_end_time': optimized_data['e'],
+            'date_tracked': _date,
+            'batch_start_time': _start,
+            'batch_end_time': _end,
             'total_time_seconds': optimized_data['tt'],
             'active_time_seconds': optimized_data['at'],
             'inactive_time_seconds': optimized_data['it'],
