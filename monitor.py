@@ -5,6 +5,13 @@ import sys
 import json
 from pathlib import Path
 
+# ── Single-instance guard (Windows) ───────────────────────────────────────────
+if sys.platform == 'win32':
+    import ctypes
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\ActivityXController")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        sys.exit(0)
+
 # Supabase import
 try:
     from supabase import create_client

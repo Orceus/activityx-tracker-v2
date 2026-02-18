@@ -13,6 +13,13 @@ if sys.platform.startswith('win'):
     if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8')
 
+# ── Single-instance guard (Windows) ───────────────────────────────────────────
+if sys.platform == 'win32':
+    import ctypes
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\ActivityXTracker")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        sys.exit(0)
+
 """
 KeyTRK Activity Tracker - Advanced User Activity Monitoring
 Enhanced version with optimized data collection and Supabase integration
