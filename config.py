@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
 ActivityX v2 Configuration — Multi-Tenant
-Fill in SUPABASE_URL and SUPABASE_KEY after creating the new Supabase project.
+Before distributing to a client, fill in their LAW_FIRM_ID from Supabase.
 """
 
-# ── Supabase credentials for the NEW v2 project ───────────────────────────────
-# Replace these with the URL and anon key from your new Supabase project.
+# ── Supabase credentials ───────────────────────────────────────────────────────
 SUPABASE_URL = ""   # e.g. "https://xxxxxxxxxxxx.supabase.co"
 SUPABASE_KEY = ""   # anon/public key
 
+# ── Client identifier ─────────────────────────────────────────────────────────
+# Copy the UUID from the law_firms table in Supabase and paste it here
+# before distributing this build to the client.
+LAW_FIRM_ID = ""    # e.g. "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
 # ── Tracking settings ─────────────────────────────────────────────────────────
 SILENT_MODE = True
-SYNC_INTERVAL = 300      # Upload every 5 minutes
+SYNC_INTERVAL = 300
 
 TRACK_CATEGORIES = False
 TRACK_URLS = True

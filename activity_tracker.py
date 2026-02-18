@@ -2585,102 +2585,23 @@ class ActivityTracker:
                 activity_type = "Desktop" if is_desktop else "App"
                 self.log(f" {activity_type} session: {time_formatted} | Clicks: {input_stats['clicks']} | Keys: {input_stats['keystrokes']}")
 
-def _get_law_firm_id(supabase_url, supabase_key):
-    """
-    On first run: show a dialog asking for the law firm name, look it up in
-    Supabase, and save the UUID locally.  On subsequent runs: read from file.
-    """
-    law_firm_file = Path("keytrk_data") / "law_firm_id.txt"
-    law_firm_file.parent.mkdir(exist_ok=True)
-
-    # Already set up — just read the saved UUID
-    if law_firm_file.exists():
-        saved = law_firm_file.read_text(encoding="utf-8").strip()
-        if saved:
-            return saved
-
-    # ── First run: ask for the firm name ──────────────────────────────────
-    import tkinter as tk
-    from tkinter import messagebox
-
-    firm_name = None
-
-    def on_submit():
-        nonlocal firm_name
-        firm_name = entry.get().strip()
-        if not firm_name:
-            messagebox.showwarning("Required", "Please enter a law firm name.")
-            return
-        root.destroy()
-
-    root = tk.Tk()
-    root.title("ActivityX Setup")
-    root.resizable(False, False)
-    root.eval("tk::PlaceWindow . center")
-
-    tk.Label(root, text="Enter your law firm name:", padx=20, pady=10).pack()
-    entry = tk.Entry(root, width=40)
-    entry.pack(padx=20, pady=(0, 10))
-    entry.focus_set()
-    tk.Button(root, text="Start Tracking", command=on_submit, padx=10, pady=5).pack(pady=(0, 15))
-    root.bind("<Return>", lambda _: on_submit())
-    root.mainloop()
-
-    if not firm_name:
-        # User closed the window without submitting — exit gracefully
-        sys.exit(0)
-
-    # ── Look up the firm in Supabase ──────────────────────────────────────
-    if not (supabase_url and supabase_key and create_client):
-        print("ERROR: Supabase credentials missing — cannot look up law firm.")
-        sys.exit(1)
-
-    try:
-        client = create_client(supabase_url, supabase_key)
-        result = client.table("law_firms").select("id").eq("name", firm_name).single().execute()
-        if not result.data:
-            import tkinter as tk
-            from tkinter import messagebox
-            messagebox.showerror(
-                "Not Found",
-                f'Law firm "{firm_name}" was not found.\n'
-                "Please ask your administrator to add it first."
-            )
-            sys.exit(1)
-        law_firm_id = result.data["id"]
-    except Exception as e:
-        print(f"ERROR looking up law firm: {e}")
-        sys.exit(1)
-
-    # Save for future runs
-    law_firm_file.write_text(law_firm_id, encoding="utf-8")
-    print(f"Law firm set: {firm_name} ({law_firm_id})")
-    return law_firm_id
-
-
 def main():
     """Main function to run the activity tracker"""
-    # Configuration - Try to import from config.py, fall back to environment variables
     SUPABASE_URL = None
     SUPABASE_KEY = None
-    SILENT_MODE = True  # Default to silent mode for production
+    LAW_FIRM_ID = None
+    SILENT_MODE = True
 
     try:
         import config
         SUPABASE_URL = config.SUPABASE_URL
         SUPABASE_KEY = config.SUPABASE_KEY
-        SILENT_MODE = getattr(config, 'SILENT_MODE', False)
-        # Configuration loaded successfully
+        LAW_FIRM_ID = getattr(config, 'LAW_FIRM_ID', None)
+        SILENT_MODE = getattr(config, 'SILENT_MODE', True)
     except ImportError:
-        # Fall back to environment variables
         SUPABASE_URL = os.getenv('SUPABASE_URL')
         SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-        if SUPABASE_URL and SUPABASE_KEY:
-            print("SUCCESS: Configuration loaded from environment variables")
-        else:
-            print("No configuration found. Copy config_example.py to config.py and update it.")
-
-    LAW_FIRM_ID = _get_law_firm_id(SUPABASE_URL, SUPABASE_KEY)
+        LAW_FIRM_ID = os.getenv('LAW_FIRM_ID')
 
     # For employee deployment, this should run in silent mode
     # For testing, set silent_mode=False in config.py
