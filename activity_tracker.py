@@ -13,11 +13,18 @@ if sys.platform.startswith('win'):
     if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8')
 
-# ── Single-instance guard (Windows) ───────────────────────────────────────────
+# ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
     import ctypes
     _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\ActivityXTracker")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        sys.exit(0)
+elif sys.platform == 'darwin':
+    import fcntl
+    _lock_file = open('/tmp/activityx_tracker.lock', 'w')
+    try:
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
         sys.exit(0)
 
 """

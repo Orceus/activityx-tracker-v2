@@ -5,11 +5,18 @@ import sys
 import json
 from pathlib import Path
 
-# ── Single-instance guard (Windows) ───────────────────────────────────────────
+# ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
     import ctypes
     _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\ActivityXController")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        sys.exit(0)
+elif sys.platform == 'darwin':
+    import fcntl
+    _lock_file = open('/tmp/activityx_controller.lock', 'w')
+    try:
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
         sys.exit(0)
 
 # Supabase import
