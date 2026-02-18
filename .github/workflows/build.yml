@@ -31,6 +31,7 @@ jobs:
         run: pyinstaller activity_tracker_controller.spec
 
       - name: Copy supporting files
+        shell: cmd
         run: |
           copy config.py dist\config.py
           copy setup.bat dist\setup.bat
