@@ -70,11 +70,13 @@ jobs:
           cp setup_mac.sh dist/setup_mac.sh
           chmod +x dist/setup_mac.sh
 
-      - name: Sign binary (macOS)
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      - name: Sign and notarize (macOS)
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           # Import certificate into temporary keychain
           KEYCHAIN_PATH=$RUNNER_TEMP/activityx.keychain-db
@@ -85,11 +87,20 @@ jobs:
           security import $RUNNER_TEMP/certificate.p12 -k "$KEYCHAIN_PATH" \
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security list-keychain -d user -s "$KEYCHAIN_PATH"
+
           # Sign the binary
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk '{print $2}')
-          codesign --force --options runtime --sign "$IDENTITY" dist/activity_tracker
-          echo "Signed with identity: $IDENTITY"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" dist/activity_tracker
+          echo "Signed with: $IDENTITY"
+
+          # Notarize
+          ditto -c -k --keepParent dist/activity_tracker dist/activity_tracker_notarize.zip
+          xcrun notarytool submit dist/activity_tracker_notarize.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          rm dist/activity_tracker_notarize.zip
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
