@@ -73,6 +73,9 @@ jobs:
       - name: Build activity_tracker (macOS)
         run: pyinstaller activity_tracker.spec
 
+      - name: Build activity_tracker_controller (macOS)
+        run: pyinstaller activity_tracker_controller.spec
+
       - name: Write version.txt
         run: |
           VERSION="${GITHUB_REF_NAME:-dev}"
@@ -114,8 +117,12 @@ jobs:
           codesign --force --options runtime --timestamp \
             --entitlements entitlements.plist \
             --sign "$IDENTITY" dist/activity_tracker
+          codesign --force --options runtime --timestamp \
+            --entitlements entitlements.plist \
+            --sign "$IDENTITY" dist/activity_tracker_controller
           echo "Signed with: $IDENTITY"
           codesign --verify --verbose dist/activity_tracker
+          codesign --verify --verbose dist/activity_tracker_controller
 
           # Notarize
           ditto -c -k --keepParent dist/activity_tracker dist/activity_tracker_notarize.zip
