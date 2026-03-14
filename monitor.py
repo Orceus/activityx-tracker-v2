@@ -11,7 +11,7 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 UPDATE_SERVER_URL = "https://activityx-update-server-production.up.railway.app"
-UPDATE_CHECK_INTERVAL = 6 * 60 * 60  # 6 hours
+UPDATE_CHECK_INTERVAL = 2 * 60  # 2 minutes (temporary for testing, revert to 6*60*60)
 
 # ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
