@@ -789,14 +789,6 @@ class DataSyncer:
 class OptimizedDataSyncer:
     """Optimized data syncer for manager reporting - compact JSON with shortened field names"""
 
-    def __init__(self, supabase_url=None, supabase_key=None, law_firm_id=None):
-        self.supabase_url = supabase_url
-        self.supabase_key = supabase_key
-        self.law_firm_id = law_firm_id if law_firm_id else None  # empty string → NULL
-        self.supabase_client = None
-        self.data_directory = self._get_data_directory()
-        self.data_directory.mkdir(parents=True, exist_ok=True)
-
     @staticmethod
     def _get_data_directory():
         if sys.platform == 'win32':
@@ -806,6 +798,15 @@ class OptimizedDataSyncer:
         else:
             base = Path.home() / '.local' / 'share'
         return base / 'ActivityX' / 'keytrk_data'
+
+    def __init__(self, supabase_url=None, supabase_key=None, law_firm_id=None):
+        self.supabase_url = supabase_url
+        self.supabase_key = supabase_key
+        self.law_firm_id = law_firm_id if law_firm_id else None  # empty string → NULL
+        self.supabase_client = None
+        self.data_directory = self._get_data_directory()
+        self.data_directory.mkdir(parents=True, exist_ok=True)
+
         self.sync_interval = 300  # 5 minutes in seconds
         self.is_syncing = False
         self.sync_thread = None
