@@ -870,15 +870,31 @@ class OptimizedDataSyncer:
                             if ssid:
                                 return ssid
             elif sys.platform == 'darwin':
+                # Use CoreWLAN (most reliable on modern macOS)
+                try:
+                    import objc
+                    bundle = objc.loadBundle('CoreWLAN', bundle_path='/System/Library/Frameworks/CoreWLAN.framework', module_globals={})
+                    CWWiFiClient = objc.lookUpClass('CWWiFiClient')
+                    client = CWWiFiClient.sharedWiFiClient()
+                    iface = client.interface()
+                    if iface and iface.ssid():
+                        return iface.ssid()
+                except Exception:
+                    pass
+                # Fallback: parse system_profiler
                 result = subprocess.run(
-                    ['/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport', '-I'],
-                    capture_output=True, text=True, timeout=5
+                    ['system_profiler', 'SPAirPortDataType'],
+                    capture_output=True, text=True, timeout=10
                 )
+                in_current = False
                 for line in result.stdout.splitlines():
-                    line = line.strip()
-                    if line.startswith('SSID:'):
-                        ssid = line.split(':', 1)[1].strip()
-                        if ssid:
+                    stripped = line.strip()
+                    if 'Current Network Information:' in stripped:
+                        in_current = True
+                        continue
+                    if in_current and stripped.endswith(':') and stripped != 'Current Network Information:':
+                        ssid = stripped[:-1].strip()
+                        if ssid and ssid != 'Network Type':
                             return ssid
         except Exception:
             pass
@@ -888,7 +904,18 @@ class OptimizedDataSyncer:
         """Get public IP address via external service"""
         try:
             import urllib.request
-            response = urllib.request.urlopen('https://api.ipify.org', timeout=5)
+            import ssl
+            ctx = ssl.create_default_context()
+            response = urllib.request.urlopen('https://api.ipify.org', timeout=5, context=ctx)
+            ip = response.read().decode('utf-8').strip()
+            if ip:
+                return ip
+        except Exception:
+            pass
+        # Fallback: try HTTP (no SSL)
+        try:
+            import urllib.request
+            response = urllib.request.urlopen('http://api.ipify.org', timeout=5)
             ip = response.read().decode('utf-8').strip()
             if ip:
                 return ip
