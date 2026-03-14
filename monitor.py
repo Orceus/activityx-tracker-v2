@@ -269,16 +269,17 @@ def apply_update(update_data):
     backup_dir = install_dir / '_backup'
     version = update_data.get("version", "unknown")
 
-    # Find the Windows zip asset
+    # Find the correct platform zip asset
     assets = update_data.get("assets", {})
     zip_name = None
+    platform_key = "macOS" if sys.platform == 'darwin' else "Windows"
     for name in assets:
-        if "Windows" in name and name.endswith(".zip"):
+        if platform_key in name and name.endswith(".zip"):
             zip_name = name
             break
 
     if not zip_name:
-        print("No Windows zip found in release assets")
+        print(f"No {platform_key} zip found in release assets")
         return False
 
     try:
