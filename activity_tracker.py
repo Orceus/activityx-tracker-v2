@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
+import logging
 
 # Force UTF-8 encoding for Windows
 if sys.platform.startswith('win'):
@@ -12,6 +13,30 @@ if sys.platform.startswith('win'):
         sys.stdout.reconfigure(encoding='utf-8')
     if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8')
+
+# ── File logging (visible even with console=False) ───────────────────────────
+def _setup_logging():
+    from pathlib import Path
+    if sys.platform == 'win32':
+        log_dir = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')) / 'ActivityX'
+    elif sys.platform == 'darwin':
+        log_dir = Path.home() / 'Library' / 'Application Support' / 'ActivityX'
+    else:
+        log_dir = Path.home() / '.local' / 'share' / 'ActivityX'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=str(log_dir / 'tracker.log'),
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
+    # Also redirect uncaught exceptions to log
+    def _exc_handler(exc_type, exc_value, exc_tb):
+        logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_tb))
+    sys.excepthook = _exc_handler
+
+_setup_logging()
+logging.info("ActivityX tracker starting...")
 
 # ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
@@ -49,13 +74,19 @@ import subprocess
 import re
 
 # Import user configuration
-from config import get_user_id
+try:
+    from config import get_user_id
+    logging.info(f"Config loaded, user_id: {get_user_id()}")
+except Exception as e:
+    logging.critical(f"Failed to load config: {e}")
+    raise
 
 # Supabase import
 try:
     from supabase import create_client, Client
-except ImportError:
-    print("Warning: Supabase client not available. Install with: pip install supabase")
+    logging.info("Supabase client imported successfully")
+except ImportError as e:
+    logging.warning(f"Supabase client not available: {e}")
     create_client = None
 
 # Cross-platform imports for window tracking and input monitoring
