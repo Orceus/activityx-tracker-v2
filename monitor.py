@@ -346,6 +346,36 @@ def apply_update(update_data):
 
         print(f"Update {version} applied successfully")
 
+        # Re-apply Windows security exclusions for new executables
+        if sys.platform == 'win32':
+            try:
+                # Remove "downloaded from internet" block flag from all exe files
+                subprocess.run(
+                    ['powershell', '-ExecutionPolicy', 'Bypass', '-Command',
+                     f"Get-ChildItem '{install_dir}' -Recurse | Unblock-File"],
+                    capture_output=True, timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                # Re-apply Defender exclusion
+                subprocess.run(
+                    ['powershell', '-ExecutionPolicy', 'Bypass', '-Command',
+                     f"Add-MpPreference -ExclusionPath '{install_dir}'"],
+                    capture_output=True, timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                # Re-add firewall rules for updated executables
+                tracker_exe = str(install_dir / 'activity_tracker.exe')
+                controller_exe = str(install_dir / 'activity_tracker_controller.exe')
+                for name, exe in [("ActivityX Tracker", tracker_exe), ("ActivityX Controller", controller_exe)]:
+                    subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', f'name={name}'],
+                                   capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+                    for direction in ['out', 'in']:
+                        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule',
+                                        f'name={name}', f'dir={direction}', 'action=allow', f'program={exe}'],
+                                       capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception:
+                pass  # Non-critical — rules may already exist
+
         # Restart tracker
         start_activity_tracker()
         return True
