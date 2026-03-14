@@ -30,6 +30,15 @@ jobs:
       - name: Build activity_tracker_controller.exe
         run: pyinstaller activity_tracker_controller.spec
 
+      - name: Build monitor.exe
+        run: pyinstaller monitor.spec
+
+      - name: Write version.txt
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          echo "${VERSION#v}" > dist/version.txt
+
       - name: Copy supporting files
         shell: cmd
         run: |
@@ -63,6 +72,11 @@ jobs:
 
       - name: Build activity_tracker (macOS)
         run: pyinstaller activity_tracker.spec
+
+      - name: Write version.txt
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          echo "${VERSION#v}" > dist/version.txt
 
       - name: Copy supporting files
         run: |
@@ -162,3 +176,6 @@ jobs:
             1. Extract the zip
             2. Run `setup.bat` — installs to Documents\ActivityX and adds to Windows startup
             3. Done — tracker runs silently in the background from now on
+
+            ### Auto-update
+            Once installed, future updates are applied automatically via the monitor service.

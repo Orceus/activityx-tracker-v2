@@ -3,7 +3,15 @@ import time
 import os
 import sys
 import json
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
+from urllib.request import urlopen, Request
+from urllib.error import URLError
+
+UPDATE_SERVER_URL = "https://activityx-update-server-production.up.railway.app"
+UPDATE_CHECK_INTERVAL = 6 * 60 * 60  # 6 hours
 
 # ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
@@ -191,6 +199,172 @@ def start_activity_tracker():
         return False
 
 
+def get_install_dir():
+    """Get the ActivityX install directory."""
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+    else:
+        base = Path.home() / '.local' / 'share'
+    return base / 'ActivityX'
+
+
+def get_current_version():
+    """Read the current version from version.txt."""
+    version_file = get_install_dir() / 'version.txt'
+    try:
+        return version_file.read_text().strip()
+    except Exception:
+        return "0.0.0"
+
+
+def check_for_update():
+    """Check the update server for a newer version. Returns (version, assets) or None."""
+    try:
+        req = Request(f"{UPDATE_SERVER_URL}/version.json", headers={"User-Agent": "ActivityX-Monitor"})
+        with urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+        remote_version = data.get("version", "0.0.0")
+        current_version = get_current_version()
+        if remote_version != current_version:
+            print(f"Update available: {current_version} -> {remote_version}")
+            return data
+        return None
+    except Exception as e:
+        print(f"Update check failed: {e}")
+        return None
+
+
+def download_file(url, dest_path):
+    """Download a file from the update server."""
+    full_url = f"{UPDATE_SERVER_URL}{url}"
+    req = Request(full_url, headers={"User-Agent": "ActivityX-Monitor"})
+    with urlopen(req, timeout=300) as resp:
+        with open(dest_path, 'wb') as f:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)
+
+
+def kill_tracker():
+    """Stop the activity tracker process."""
+    if sys.platform == 'win32':
+        try:
+            subprocess.run(
+                ['taskkill', '/F', '/IM', 'activity_tracker.exe'],
+                stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+        except Exception:
+            pass
+    time.sleep(2)
+
+
+def apply_update(update_data):
+    """Download and apply an update. Returns True on success."""
+    install_dir = get_install_dir()
+    backup_dir = install_dir / '_backup'
+    version = update_data.get("version", "unknown")
+
+    # Find the Windows zip asset
+    assets = update_data.get("assets", {})
+    zip_name = None
+    for name in assets:
+        if "Windows" in name and name.endswith(".zip"):
+            zip_name = name
+            break
+
+    if not zip_name:
+        print("No Windows zip found in release assets")
+        return False
+
+    try:
+        # Download to temp
+        tmp_dir = Path(tempfile.mkdtemp(prefix="activityx_update_"))
+        zip_path = tmp_dir / zip_name
+        print(f"Downloading update {version}...")
+        download_file(assets[zip_name]["url"], zip_path)
+
+        # Extract
+        print("Extracting update...")
+        extract_dir = tmp_dir / "extracted"
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(extract_dir)
+
+        # Find the actual files (may be inside a windows/ subfolder)
+        source_dir = extract_dir
+        for sub in extract_dir.iterdir():
+            if sub.is_dir():
+                source_dir = sub
+                break
+
+        # Verify key files exist in the download
+        tracker_name = "activity_tracker.exe" if sys.platform == 'win32' else "activity_tracker"
+        if not (source_dir / tracker_name).exists():
+            print(f"Update package missing {tracker_name}, aborting")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return False
+
+        # Stop tracker before swapping files
+        kill_tracker()
+
+        # Backup current files (only exe and version.txt)
+        backup_dir.mkdir(exist_ok=True)
+        files_to_update = [tracker_name, 'version.txt']
+        controller_name = "activity_tracker_controller.exe" if sys.platform == 'win32' else "activity_tracker_controller"
+        if (source_dir / controller_name).exists():
+            files_to_update.append(controller_name)
+
+        for fname in files_to_update:
+            src = install_dir / fname
+            if src.exists():
+                try:
+                    shutil.copy2(src, backup_dir / fname)
+                except Exception:
+                    pass
+
+        # Copy new files (don't overwrite config.py)
+        for item in source_dir.iterdir():
+            if item.name == 'config.py':
+                continue  # Never overwrite client config
+            dest = install_dir / item.name
+            try:
+                if item.is_dir():
+                    if dest.exists():
+                        shutil.rmtree(dest)
+                    shutil.copytree(item, dest)
+                else:
+                    shutil.copy2(item, dest)
+            except Exception as e:
+                print(f"Failed to copy {item.name}: {e}")
+
+        # Clean up temp
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        print(f"Update {version} applied successfully")
+
+        # Restart tracker
+        start_activity_tracker()
+        return True
+
+    except Exception as e:
+        print(f"Update failed: {e}")
+        # Attempt rollback
+        if backup_dir.exists():
+            print("Rolling back...")
+            for item in backup_dir.iterdir():
+                try:
+                    shutil.copy2(item, install_dir / item.name)
+                except Exception:
+                    pass
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        start_activity_tracker()
+        return False
+
+
 def main():
     if sys.platform == 'win32':
         import ctypes
@@ -200,6 +374,7 @@ def main():
 
     last_batch_upload = time.time()
     batch_upload_interval = 180  # 3 minutes
+    last_update_check = 0  # Check on first loop iteration
 
     while True:
         try:
@@ -214,6 +389,16 @@ def main():
                 except Exception:
                     pass
                 last_batch_upload = current_time
+
+            # Auto-update check
+            if current_time - last_update_check >= UPDATE_CHECK_INTERVAL:
+                try:
+                    update_data = check_for_update()
+                    if update_data:
+                        apply_update(update_data)
+                except Exception as e:
+                    print(f"Update error: {e}")
+                last_update_check = current_time
 
             time.sleep(30)
 
