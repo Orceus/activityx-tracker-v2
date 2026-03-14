@@ -4,7 +4,7 @@
 
 set -e
 
-INSTALL_DIR="$HOME/Library/ActivityX"
+INSTALL_DIR="$HOME/Library/Application Support/ActivityX"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST_FILE="$PLIST_DIR/com.activityx.tracker.plist"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

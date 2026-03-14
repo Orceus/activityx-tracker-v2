@@ -7,7 +7,7 @@ echo    ActivityX Setup
 echo ========================================
 echo.
 
-set "INSTALL_DIR=%USERPROFILE%\Documents\ActivityX"
+set "INSTALL_DIR=%LOCALAPPDATA%\ActivityX"
 set "SETUP_DIR=%~dp0"
 
 echo Creating installation directory...

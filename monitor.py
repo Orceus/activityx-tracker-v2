@@ -63,7 +63,13 @@ def init_supabase_client():
 
 def upload_optimized_batches():
     """Upload optimized batch files from Documents folder to Supabase"""
-    documents_path = Path(os.path.expanduser('~')) / 'Documents' / 'ActivityX' / 'keytrk_data'
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+    else:
+        base = Path.home() / '.local' / 'share'
+    documents_path = base / 'ActivityX' / 'keytrk_data'
 
     if not documents_path.exists():
         return
@@ -129,10 +135,13 @@ def upload_single_batch(supabase_client, file_path, law_firm_id=None):
             'total_time_seconds': data.get('tt', 0),
             'active_time_seconds': data.get('at', 0),
             'inactive_time_seconds': data.get('it', 0),
+            'network_name': data.get('nn'),
+            'ip_address': data.get('ip'),
+            'local_ips': data.get('li'),
             'batch_data': data
         }
 
-        response = supabase_client.table("activity_summary").insert(insert_data).execute()
+        response = supabase_client.table("activity_summary").upsert(insert_data, on_conflict="batch_id,user_id").execute()
 
         if response.data:
             print(f"SUCCESS: Uploaded optimized file {file_path.name}")
@@ -159,7 +168,15 @@ def is_process_running(process_name):
 
 
 def start_activity_tracker():
-    tracker_path = Path(os.path.expanduser('~')) / 'Documents' / 'ActivityX' / 'activity_tracker.exe'
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+        tracker_path = base / 'ActivityX' / 'activity_tracker.exe'
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+        tracker_path = base / 'ActivityX' / 'activity_tracker'
+    else:
+        base = Path.home() / '.local' / 'share'
+        tracker_path = base / 'ActivityX' / 'activity_tracker'
     try:
         subprocess.Popen(
             [str(tracker_path)],

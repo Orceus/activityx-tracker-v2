@@ -466,6 +466,7 @@ class InputTracker:
     def __init__(self):
         self.click_count = 0
         self.key_count = 0
+        self.scroll_count = 0
         self.last_activity = time.time()
         self.is_monitoring = False
         
@@ -509,6 +510,7 @@ class InputTracker:
     
     def _on_scroll(self, x, y, dx, dy):
         """Handle mouse scroll events"""
+        self.scroll_count += 1
         self.last_activity = time.time()
     
     def _on_move(self, x, y):
@@ -525,6 +527,7 @@ class InputTracker:
         return {
             'clicks': self.click_count,
             'keystrokes': self.key_count,
+            'scrolls': self.scroll_count,
             'last_activity': self.last_activity
         }
     
@@ -532,16 +535,27 @@ class InputTracker:
         """Reset activity counters"""
         self.click_count = 0
         self.key_count = 0
+        self.scroll_count = 0
 
 class DataSyncer:
     """Handles continuous data saving and Supabase synchronization"""
-    
+
     def __init__(self, supabase_url=None, supabase_key=None):
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
         self.supabase_client = None
-        self.data_directory = Path("keytrk_data")
-        self.data_directory.mkdir(exist_ok=True)
+        self.data_directory = self._get_data_directory()
+        self.data_directory.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _get_data_directory():
+        if sys.platform == 'win32':
+            base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+        elif sys.platform == 'darwin':
+            base = Path.home() / 'Library' / 'Application Support'
+        else:
+            base = Path.home() / '.local' / 'share'
+        return base / 'ActivityX' / 'keytrk_data'
         self.sync_interval = 120  # 2 minutes in seconds
         self.is_syncing = False
         self.sync_thread = None
@@ -743,14 +757,24 @@ class DataSyncer:
 
 class OptimizedDataSyncer:
     """Optimized data syncer for manager reporting - compact JSON with shortened field names"""
-    
+
     def __init__(self, supabase_url=None, supabase_key=None, law_firm_id=None):
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
         self.law_firm_id = law_firm_id if law_firm_id else None  # empty string → NULL
         self.supabase_client = None
-        self.data_directory = Path("keytrk_data")
-        self.data_directory.mkdir(exist_ok=True)
+        self.data_directory = self._get_data_directory()
+        self.data_directory.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _get_data_directory():
+        if sys.platform == 'win32':
+            base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+        elif sys.platform == 'darwin':
+            base = Path.home() / 'Library' / 'Application Support'
+        else:
+            base = Path.home() / '.local' / 'share'
+        return base / 'ActivityX' / 'keytrk_data'
         self.sync_interval = 300  # 5 minutes in seconds
         self.is_syncing = False
         self.sync_thread = None
@@ -761,6 +785,11 @@ class OptimizedDataSyncer:
         self.activity_timeline = []  # Track activities chronologically
         self.inactive_periods = []  # [{'s': start_time, 'du': duration}]
         self.total_inactive_time = 0.0
+
+        # Input counters for current batch (accumulated from InputTracker)
+        self.batch_key_count = 0
+        self.batch_click_count = 0
+        self.batch_scroll_count = 0
 
         # Track current inactive state for continuous batching
         self.current_inactive_state = {
@@ -791,6 +820,113 @@ class OptimizedDataSyncer:
         except:
             return f"user_{platform.node()}"
     
+    def _get_network_name(self):
+        """Get current WiFi SSID or network name"""
+        try:
+            if sys.platform == 'win32':
+                result = subprocess.run(
+                    ['netsh', 'wlan', 'show', 'interfaces'],
+                    capture_output=True, text=True, timeout=5,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith('SSID') and 'BSSID' not in line:
+                        parts = line.split(':', 1)
+                        if len(parts) == 2:
+                            ssid = parts[1].strip()
+                            if ssid:
+                                return ssid
+            elif sys.platform == 'darwin':
+                result = subprocess.run(
+                    ['/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport', '-I'],
+                    capture_output=True, text=True, timeout=5
+                )
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith('SSID:'):
+                        ssid = line.split(':', 1)[1].strip()
+                        if ssid:
+                            return ssid
+        except Exception:
+            pass
+        return None
+
+    def _get_public_ip(self):
+        """Get public IP address via external service"""
+        try:
+            import urllib.request
+            response = urllib.request.urlopen('https://api.ipify.org', timeout=5)
+            ip = response.read().decode('utf-8').strip()
+            if ip:
+                return ip
+        except Exception:
+            pass
+        return None
+
+    def _get_all_local_ips(self):
+        """Get all local/internal IP addresses from all network interfaces"""
+        ips = []
+        try:
+            import socket
+            # Get all addresses for this hostname
+            hostname = socket.gethostname()
+            try:
+                addr_infos = socket.getaddrinfo(hostname, None, socket.AF_INET)
+                for info in addr_infos:
+                    ip = info[4][0]
+                    if ip and ip != '127.0.0.1' and ip not in ips:
+                        ips.append(ip)
+            except Exception:
+                pass
+
+            # Also try connecting to external to find primary interface
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                primary_ip = s.getsockname()[0]
+                s.close()
+                if primary_ip and primary_ip != '127.0.0.1' and primary_ip not in ips:
+                    ips.append(primary_ip)
+            except Exception:
+                pass
+
+            # On Windows, use ipconfig to catch all adapters
+            if sys.platform == 'win32':
+                try:
+                    result = subprocess.run(
+                        ['ipconfig'],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                    )
+                    for line in result.stdout.splitlines():
+                        line = line.strip()
+                        if 'IPv4' in line and ':' in line:
+                            ip = line.split(':', 1)[1].strip()
+                            if ip and ip != '127.0.0.1' and ip not in ips:
+                                ips.append(ip)
+                except Exception:
+                    pass
+            elif sys.platform == 'darwin':
+                try:
+                    result = subprocess.run(
+                        ['ifconfig'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    for line in result.stdout.splitlines():
+                        line = line.strip()
+                        if line.startswith('inet ') and '127.0.0.1' not in line:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                ip = parts[1]
+                                if ip not in ips:
+                                    ips.append(ip)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return ips if ips else None
+
     def _clean_app_name(self, app_name):
         """Remove file extensions from app names"""
         if not app_name:
@@ -961,6 +1097,17 @@ class OptimizedDataSyncer:
         
         batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         
+        # Detect current network and IP for office presence tracking
+        network_name = self._get_network_name()
+        ip_address = self._get_public_ip()
+        local_ips = self._get_all_local_ips()
+        if network_name:
+            optimized_data['nn'] = network_name
+        if ip_address:
+            optimized_data['ip'] = ip_address
+        if local_ips:
+            optimized_data['li'] = local_ips
+
         # Prepare data for database
         _date = optimized_data['d']
         _start = optimized_data['s']
@@ -979,6 +1126,9 @@ class OptimizedDataSyncer:
             'total_time_seconds': optimized_data['tt'],
             'active_time_seconds': optimized_data['at'],
             'inactive_time_seconds': optimized_data['it'],
+            'network_name': network_name,
+            'ip_address': ip_address,
+            'local_ips': local_ips,
             'batch_data': optimized_data
         }
 
@@ -1033,9 +1183,12 @@ class OptimizedDataSyncer:
                 'tt': total_batch_time,
                 'at': total_batch_time,  # Assume all time was active (minimal tracking)
                 'it': 0.0,  # No inactive time
+                'kc': 0,  # No keyboard input detected
+                'mc': 0,  # No mouse clicks detected
+                'sc': 0,  # No scroll events detected
                 'spans_midnight': spans_midnight
             }
-            
+
             if spans_midnight:
                 optimized_data['ed'] = end_date.isoformat()
             
@@ -1282,6 +1435,9 @@ class OptimizedDataSyncer:
             'tt': total_batch_time,
             'at': active_time,
             'it': batch_inactive_time,  # Use filtered inactive time
+            'kc': self.batch_key_count,
+            'mc': self.batch_click_count,
+            'sc': self.batch_scroll_count,
             'spans_midnight': spans_midnight
         }
         
@@ -1353,6 +1509,17 @@ class OptimizedDataSyncer:
         
         batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         
+        # Detect current network and IP for office presence tracking
+        network_name = self._get_network_name()
+        ip_address = self._get_public_ip()
+        local_ips = self._get_all_local_ips()
+        if network_name:
+            optimized_data['nn'] = network_name
+        if ip_address:
+            optimized_data['ip'] = ip_address
+        if local_ips:
+            optimized_data['li'] = local_ips
+
         # Prepare data for database - only include fields that exist in the schema
         _date = optimized_data['d']
         _start = optimized_data['s']
@@ -1371,6 +1538,9 @@ class OptimizedDataSyncer:
             'total_time_seconds': optimized_data['tt'],
             'active_time_seconds': optimized_data['at'],
             'inactive_time_seconds': optimized_data['it'],
+            'network_name': network_name,
+            'ip_address': ip_address,
+            'local_ips': local_ips,
             'batch_data': optimized_data
         }
 
@@ -1415,12 +1585,21 @@ class OptimizedDataSyncer:
         except Exception as e:
             print(f"Failed to save locally: {e}")
     
+    def accumulate_input_stats(self, clicks, keystrokes, scrolls):
+        """Accumulate input stats from InputTracker into current batch"""
+        self.batch_key_count += keystrokes
+        self.batch_click_count += clicks
+        self.batch_scroll_count += scrolls
+
     def _reset_batch(self):
         """Reset data for next batch"""
         self.batch_start_time = datetime.now()
         self.activity_timeline = []
         self.inactive_periods = []
         self.total_inactive_time = 0.0
+        self.batch_key_count = 0
+        self.batch_click_count = 0
+        self.batch_scroll_count = 0
         
 
 
@@ -2005,10 +2184,14 @@ class ActivityTracker:
                             prev_app = self.tracking_data[self.current_window].get('app_name', 'Unknown')
                             time_spent = self.format_time_spent(session_duration)
                             self.log(f" Spent {time_spent} on {prev_app}")
-                            
+
+                            # Accumulate input stats into batch before resetting
+                            self.data_syncer.accumulate_input_stats(
+                                input_stats['clicks'], input_stats['keystrokes'], input_stats['scrolls']
+                            )
                             # Reset input counters
                             self.input_tracker.reset_counters()
-                            
+
                             # Clear current window to indicate we're inactive
                             self.current_window = None
                             self.last_activity_time = None
@@ -2563,10 +2746,14 @@ class ActivityTracker:
                 prev_app = self.tracking_data[self.current_window].get('app_name', 'Unknown')
                 time_spent = self.format_time_spent(session_duration)
                 self.log(f" Spent {time_spent} on {prev_app}")
-                
+
+                # Accumulate input stats into batch before resetting
+                self.data_syncer.accumulate_input_stats(
+                    input_stats['clicks'], input_stats['keystrokes'], input_stats['scrolls']
+                )
                 # Reset input counters
                 self.input_tracker.reset_counters()
-            
+
             # Start tracking new activity
             self.current_window = activity_key
             self.last_activity_time = current_time
