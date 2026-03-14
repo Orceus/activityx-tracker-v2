@@ -856,10 +856,12 @@ class OptimizedDataSyncer:
         """Get current WiFi SSID or network name"""
         try:
             if sys.platform == 'win32':
+                cf = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                # Try WiFi SSID first
                 result = subprocess.run(
                     ['netsh', 'wlan', 'show', 'interfaces'],
                     capture_output=True, text=True, timeout=5,
-                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                    creationflags=cf, encoding='utf-8', errors='replace'
                 )
                 for line in result.stdout.splitlines():
                     line = line.strip()
@@ -869,6 +871,21 @@ class OptimizedDataSyncer:
                             ssid = parts[1].strip()
                             if ssid:
                                 return ssid
+                # Fallback: Ethernet — get active connection profile name
+                result = subprocess.run(
+                    ['netsh', 'interface', 'show', 'interface'],
+                    capture_output=True, text=True, timeout=5,
+                    creationflags=cf, encoding='utf-8', errors='replace'
+                )
+                for line in result.stdout.splitlines():
+                    if 'Connected' in line and 'Disconnected' not in line:
+                        parts = line.split()
+                        # Format: Admin State  State  Type  Interface Name
+                        # e.g.   Enabled  Connected  Dedicated  Ethernet
+                        if len(parts) >= 4:
+                            iface_name = ' '.join(parts[3:])
+                            if iface_name.lower() not in ('loopback', 'loopback pseudo-interface 1'):
+                                return f"Ethernet ({iface_name})"
             elif sys.platform == 'darwin':
                 # Use CoreWLAN (most reliable on modern macOS)
                 try:
