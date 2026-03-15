@@ -181,8 +181,13 @@ jobs:
 
             ### Client installation (Windows)
             1. Extract the zip
-            2. Run `setup.bat` — installs to Documents\ActivityX and adds to Windows startup
-            3. Done — tracker runs silently in the background from now on
+            2. Run `setup.bat` — installs to AppData\Local\ActivityX and adds to Windows startup
+            3. Done — tracker runs silently in the background
 
-            ### Auto-update
-            Once installed, future updates are applied automatically via the monitor service.
+            ### Client installation (macOS)
+            1. Extract the zip
+            2. Double-click `setup_mac.command`
+            3. Done — tracker runs as a LaunchAgent
+
+            ### Updating
+            To update, re-run the setup script with the new version.
