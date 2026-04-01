@@ -504,6 +504,7 @@ def main():
     last_batch_upload = time.time()
     last_log_upload = time.time()
     last_update_check = 0
+    last_tracker_start = time.time()  # Grace period for stale check
     batch_upload_interval = 180
     log_upload_interval = 1800
 
@@ -512,18 +513,21 @@ def main():
             current_time = time.time()
 
             process_running = is_process_running('activity_tracker.exe')
-            tracker_healthy = check_last_alive()
+            # Only check staleness after tracker has had time to sync (10 min grace)
+            tracker_healthy = check_last_alive() if (current_time - last_tracker_start > STALE_THRESHOLD_SECONDS) else True
 
             if not process_running:
                 logging.warning("activity_tracker.exe not running, restarting...")
                 record_crash()
                 check_crash_and_rollback()
                 start_activity_tracker()
+                last_tracker_start = time.time()
             elif process_running and not tracker_healthy:
                 logging.warning("Tracker process alive but stale. Force-killing...")
                 kill_process('activity_tracker.exe')
                 time.sleep(5)
                 start_activity_tracker()
+                last_tracker_start = time.time()
 
             # Auto-update check every hour
             if current_time - last_update_check >= UPDATE_CHECK_INTERVAL:
