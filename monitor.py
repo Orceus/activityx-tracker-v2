@@ -139,11 +139,15 @@ def upload_single_batch(supabase_client, file_path, law_firm_id=None):
         date_str = data.get('d')
         start_str = data.get('s')
         end_str = data.get('e')
-        # Convert time-only strings (HH:MM:SS) to full timestamptz (YYYY-MM-DDTHH:MM:SS)
+        # Convert time-only strings (HH:MM:SS) to full timestamptz
+        # Add local timezone offset since tracker sends local time without TZ info
+        from datetime import datetime as _dt, timezone as _tz
+        local_offset = _dt.now(_tz.utc).astimezone().strftime('%z')  # e.g., "+0300"
+        tz_suffix = f"{local_offset[:3]}:{local_offset[3:]}"  # "+03:00"
         if date_str and start_str and 'T' not in str(start_str):
-            start_str = f"{date_str}T{start_str}"
+            start_str = f"{date_str}T{start_str}{tz_suffix}"
         if date_str and end_str and 'T' not in str(end_str):
-            end_str = f"{date_str}T{end_str}"
+            end_str = f"{date_str}T{end_str}{tz_suffix}"
 
         insert_data = {
             'batch_id': file_path.stem,
