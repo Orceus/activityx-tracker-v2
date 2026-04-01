@@ -29,9 +29,6 @@ jobs:
       - name: Build activity_tracker_controller.exe
         run: pyinstaller activity_tracker_controller.spec
 
-      - name: Build monitor.exe
-        run: pyinstaller monitor.spec
-
       - name: Write version.txt
         shell: bash
         run: |
