@@ -34,9 +34,19 @@ def _setup_logging():
     def _exc_handler(exc_type, exc_value, exc_tb):
         logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_tb))
     sys.excepthook = _exc_handler
+    return log_dir
 
-_setup_logging()
-logging.info("ActivityX tracker starting...")
+_APP_DATA_DIR = _setup_logging()
+logging.info("ActivityX tracker starting, data dir: %s", _APP_DATA_DIR)
+
+def _write_last_alive():
+    """Write current timestamp to last_alive.txt so the controller can check health."""
+    try:
+        from datetime import datetime as _dt
+        alive_path = _APP_DATA_DIR / 'last_alive.txt'
+        alive_path.write_text(_dt.now().isoformat())
+    except Exception:
+        pass
 
 # ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
@@ -1114,15 +1124,17 @@ class OptimizedDataSyncer:
         while self.is_syncing:
             try:
                 current_time = time.time()
-                
+
                 if current_time - self.last_sync_time >= self.sync_interval:
-                    # FORCE batch creation and sync every 5 minutes regardless of state
                     self._force_sync_batch()
                     self.last_sync_time = current_time
-                
-                time.sleep(30)  # Check every 30 seconds
-                
+                    _write_last_alive()
+                    logging.info("Sync completed, last_alive updated")
+
+                time.sleep(30)
+
             except Exception as e:
+                logging.error("Error in optimized sync loop: %s", e, exc_info=True)
                 print(f"ERROR: Error in optimized sync loop: {e}")
                 time.sleep(60)
 
@@ -1241,15 +1253,15 @@ class OptimizedDataSyncer:
             print("No activity data - creating minimal active batch for this 5-minute window")
             # Create a minimal active batch (user was present but no specific activities tracked)
             self.total_inactive_time = 0.0
-            
+
             # Create minimal batch data
             batch_start_time = self.batch_start_time
             total_batch_time = 300.00  # 5 minutes
-            
+
             start_date = batch_start_time.date()
             end_date = batch_end_time.date()
             spans_midnight = start_date != end_date
-            
+
             # Create minimal optimized data structure
             optimized_data = {
                 'u': self.user_id,
@@ -2933,18 +2945,39 @@ def main():
             print("Data is being saved every 5 minutes and synced to Supabase")
             input()  # Wait for user input
         else:
-            # In production, this runs continuously
-            print("Starting continuous tracking mode...")
+            # In production, this runs continuously with heartbeat monitoring
+            logging.info("Starting continuous tracking mode with heartbeat...")
+            thread_restart_count = 0
             while True:
                 time.sleep(60)  # Check every minute
-                # The tracker will continue running and saving data every 5 minutes
-        
+
+                # ── Heartbeat: check if tracking thread is alive ──
+                if not tracker.tracking_thread.is_alive():
+                    thread_restart_count += 1
+                    logging.error(
+                        "Tracking thread died (restart #%d). Restarting...",
+                        thread_restart_count
+                    )
+                    tracker.tracking_thread = threading.Thread(
+                        target=tracker.track_activity
+                    )
+                    tracker.tracking_thread.daemon = True
+                    tracker.tracking_thread.start()
+                    logging.info("Tracking thread restarted successfully")
+
+                # ── Write last_alive timestamp ──
+                _write_last_alive()
+
     except KeyboardInterrupt:
+        logging.info("Tracker stopped by KeyboardInterrupt")
         print("Stopping tracker...")
-    
+    except Exception as e:
+        logging.critical("Fatal error in main loop: %s", e, exc_info=True)
+
     finally:
         tracker.stop_tracking()
         tracker.generate_report()
+        logging.info("Tracker shut down")
 
 if __name__ == "__main__":
     main() 

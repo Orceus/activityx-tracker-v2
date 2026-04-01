@@ -3,7 +3,27 @@ import time
 import os
 import sys
 import json
+import logging
 from pathlib import Path
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+def _setup_controller_logging():
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+    else:
+        base = Path.home() / '.local' / 'share'
+    log_dir = base / 'ActivityX'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=str(log_dir / 'controller.log'),
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
+
+_setup_controller_logging()
 
 # ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
@@ -193,11 +213,57 @@ def start_activity_tracker():
 
 
 
+STALE_THRESHOLD_SECONDS = 600  # 10 minutes
+
+
+def kill_process(process_name):
+    """Force-kill a process by name"""
+    try:
+        subprocess.call(
+            ['taskkill', '/F', '/IM', process_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        logging.info("Force-killed %s", process_name)
+        return True
+    except Exception as e:
+        logging.error("Failed to kill %s: %s", process_name, e)
+        return False
+
+
+def check_last_alive():
+    """Check if tracker is actually producing data (not zombie)."""
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+    else:
+        base = Path.home() / '.local' / 'share'
+    alive_path = base / 'ActivityX' / 'last_alive.txt'
+
+    if not alive_path.exists():
+        return False
+    try:
+        from datetime import datetime
+        content = alive_path.read_text().strip()
+        last_alive = datetime.fromisoformat(content)
+        age_seconds = (datetime.now() - last_alive).total_seconds()
+        if age_seconds > STALE_THRESHOLD_SECONDS:
+            logging.warning("last_alive.txt is %.0f seconds old (threshold: %d)", age_seconds, STALE_THRESHOLD_SECONDS)
+            return False
+        return True
+    except Exception as e:
+        logging.error("Error reading last_alive.txt: %s", e)
+        return False
+
+
 def main():
     if sys.platform == 'win32':
         import ctypes
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
 
+    logging.info("Controller started")
     time.sleep(60)
 
     last_batch_upload = time.time()
@@ -207,7 +273,16 @@ def main():
         try:
             current_time = time.time()
 
-            if not is_process_running('activity_tracker.exe'):
+            process_running = is_process_running('activity_tracker.exe')
+            tracker_healthy = check_last_alive()
+
+            if not process_running:
+                logging.warning("activity_tracker.exe not running, restarting...")
+                start_activity_tracker()
+            elif process_running and not tracker_healthy:
+                logging.warning("Tracker process alive but stale. Force-killing...")
+                kill_process('activity_tracker.exe')
+                time.sleep(5)
                 start_activity_tracker()
 
             if current_time - last_batch_upload >= batch_upload_interval:
@@ -219,7 +294,8 @@ def main():
 
             time.sleep(30)
 
-        except Exception:
+        except Exception as e:
+            logging.error("Error in controller main loop: %s", e, exc_info=True)
             time.sleep(30)
             continue
 
@@ -227,6 +303,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except Exception:
+    except Exception as e:
+        logging.critical("Controller fatal error: %s", e, exc_info=True)
         while True:
             time.sleep(60)

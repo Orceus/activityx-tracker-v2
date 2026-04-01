@@ -11,7 +11,7 @@ set "SETUP_DIR=%~dp0"
 cd /d "%SETUP_DIR%"
 
 REM Define installation directory
-set "INSTALL_DIR=%USERPROFILE%\Documents\ActivityX"
+set "INSTALL_DIR=%LOCALAPPDATA%\ActivityX"
 
 echo Step 1: Running initial setup...
 echo ----------------------------------------
@@ -144,6 +144,23 @@ timeout /t 2 /nobreak >nul
 start "" "activity_tracker_controller.exe"
 echo    Started: activity_tracker_controller.exe
 cd /d "%SETUP_DIR%"
+
+echo.
+echo Step 6: Registering Windows Scheduled Task...
+echo ----------------------------------------
+schtasks /Delete /TN "ActivityX Controller" /F >nul 2>&1
+schtasks /Create /TN "ActivityX Controller" /TR "\"%INSTALL_DIR%\activity_tracker_controller.exe\"" /SC MINUTE /MO 5 /F >nul 2>&1
+if %errorlevel% equ 0 (
+    echo    Scheduled task created: runs every 5 minutes
+) else (
+    echo    WARNING: Failed to create scheduled task
+)
+schtasks /Create /TN "ActivityX Controller Startup" /TR "\"%INSTALL_DIR%\activity_tracker_controller.exe\"" /SC ONLOGON /F >nul 2>&1
+if %errorlevel% equ 0 (
+    echo    Logon task created: starts on user login
+) else (
+    echo    WARNING: Failed to create logon task
+)
 
 echo.
 echo ========================================
