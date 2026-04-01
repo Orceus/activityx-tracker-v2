@@ -481,12 +481,40 @@ def upload_logs_to_supabase():
                 logging.error("Failed to upload %s log: %s", log_type, e)
 
 
+def _ensure_scheduled_tasks():
+    """Register Windows Scheduled Tasks on first run so controller auto-restarts."""
+    if sys.platform != 'win32':
+        return
+    marker = _UPDATE_DIR / '.tasks_registered'
+    if marker.exists():
+        return
+    try:
+        exe_path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)
+        subprocess.call(
+            ['schtasks', '/Create', '/TN', 'ActivityX Controller',
+             '/TR', f'"{exe_path}"', '/SC', 'MINUTE', '/MO', '5', '/F'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        subprocess.call(
+            ['schtasks', '/Create', '/TN', 'ActivityX Controller Startup',
+             '/TR', f'"{exe_path}"', '/SC', 'ONLOGON', '/F'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        marker.write_text('1')
+        logging.info("Registered Windows Scheduled Tasks")
+    except Exception as e:
+        logging.error("Failed to register scheduled tasks: %s", e)
+
+
 def main():
     if sys.platform == 'win32':
         import ctypes
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
 
     logging.info("Controller started")
+    _ensure_scheduled_tasks()
     time.sleep(60)
 
     last_batch_upload = time.time()
