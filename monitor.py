@@ -191,27 +191,37 @@ def is_process_running(process_name):
         return False
 
 
+def _find_tracker_exe():
+    """Find activity_tracker exe — check exe's own dir first, then AppData."""
+    exe_name = 'activity_tracker.exe' if sys.platform == 'win32' else 'activity_tracker'
+    # Check same directory as controller
+    own_dir = Path(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)))
+    candidate = own_dir / exe_name
+    if candidate.exists():
+        return candidate
+    # Check AppData
+    return _UPDATE_DIR / exe_name
+
+
 def start_activity_tracker():
-    if sys.platform == 'win32':
-        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
-        tracker_path = base / 'ActivityX' / 'activity_tracker.exe'
-    elif sys.platform == 'darwin':
-        base = Path.home() / 'Library' / 'Application Support'
-        tracker_path = base / 'ActivityX' / 'activity_tracker'
-    else:
-        base = Path.home() / '.local' / 'share'
-        tracker_path = base / 'ActivityX' / 'activity_tracker'
+    tracker_path = _find_tracker_exe()
+    if not tracker_path.exists():
+        logging.error("activity_tracker not found at %s", tracker_path)
+        return False
     try:
-        subprocess.Popen(
-            [str(tracker_path)],
-            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            cwd=str(tracker_path.parent),
-        )
+        kwargs = {
+            'stdout': subprocess.DEVNULL,
+            'stderr': subprocess.DEVNULL,
+            'stdin': subprocess.DEVNULL,
+            'cwd': str(tracker_path.parent),
+        }
+        if sys.platform == 'win32':
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+        subprocess.Popen([str(tracker_path)], **kwargs)
+        logging.info("Started tracker from %s", tracker_path)
         return True
-    except Exception:
+    except Exception as e:
+        logging.error("Failed to start tracker: %s", e)
         return False
 
 
@@ -239,30 +249,43 @@ _UPDATE_DIR = _get_log_dir_for_update()
 
 
 def get_local_version():
-    version_path = _UPDATE_DIR / 'version.txt'
-    try:
-        if version_path.exists():
-            return version_path.read_text().strip()
-    except Exception:
-        pass
+    # Check AppData first, then exe's own directory
+    for base in [_UPDATE_DIR, Path(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)))]:
+        version_path = base / 'version.txt'
+        try:
+            if version_path.exists():
+                return version_path.read_text().strip()
+        except Exception:
+            pass
     return "v0.0.0"
 
 
 def _get_ssl_context():
     """Get an SSL context that works in PyInstaller builds."""
     import ssl
+    # Try certifi first (bundled via PyInstaller hiddenimport)
     try:
         import certifi
         return ssl.create_default_context(cafile=certifi.where())
-    except ImportError:
+    except (ImportError, Exception):
         pass
-    # Windows: load certs from Windows certificate store
+    # Try Windows certificate store
     if sys.platform == 'win32':
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.load_default_certs()
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.load_default_certs(purpose=ssl.Purpose.SERVER_AUTH)
+            return ctx
+        except Exception:
+            pass
+    # Try default context
+    try:
+        return ssl.create_default_context()
+    except Exception:
+        # Last resort: no verification (still encrypted, just no cert check)
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
         return ctx
-    # Fallback: use default context (works on most systems with proper certs)
-    return ssl.create_default_context()
 
 
 def check_and_update():
@@ -410,11 +433,11 @@ def check_last_alive():
 
 def _get_pc_name():
     try:
-        _cfg2 = _load_config()
-        from config import get_user_id
-        return get_user_id()
+        cfg = _load_config()
+        return cfg.get_user_id()
     except Exception:
-        return f"user_{os.environ.get('COMPUTERNAME', 'unknown')}"
+        import platform
+        return f"{os.environ.get('USERNAME', os.environ.get('USER', 'user'))}@{platform.node()}"
 
 
 def _read_last_lines(file_path, n=100):

@@ -35,8 +35,7 @@ jobs:
       - name: Write version.txt
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME:-dev}"
-          echo "${VERSION#v}" > dist/version.txt
+          echo "${GITHUB_REF_NAME:-dev}" > dist/version.txt
 
       - name: Copy supporting files
         shell: cmd
@@ -75,6 +74,9 @@ jobs:
         with:
           files: |
             release/ActivityX-Windows-${{ github.ref_name }}.zip
+            release/windows/activity_tracker.exe
+            release/windows/activity_tracker_controller.exe
+            release/windows/version.txt
           body: |
             ## ActivityX Employee Tracker ${{ github.ref_name }}
 
