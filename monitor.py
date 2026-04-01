@@ -214,6 +214,131 @@ def start_activity_tracker():
 
 
 STALE_THRESHOLD_SECONDS = 600  # 10 minutes
+GITHUB_REPO = "Orceus/activityx-tracker-v2"
+UPDATE_CHECK_INTERVAL = 3600  # 1 hour
+MAX_CRASH_COUNT = 3
+
+
+def _get_log_dir_for_update():
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+    else:
+        base = Path.home() / '.local' / 'share'
+    d = base / 'ActivityX'
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+_UPDATE_DIR = _get_log_dir_for_update()
+
+
+def get_local_version():
+    version_path = _UPDATE_DIR / 'version.txt'
+    try:
+        if version_path.exists():
+            return version_path.read_text().strip()
+    except Exception:
+        pass
+    return "v0.0.0"
+
+
+def check_and_update():
+    try:
+        import urllib.request
+        import urllib.error
+        import shutil
+
+        local_version = get_local_version()
+        logging.info("Checking for updates... current: %s", local_version)
+
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            release = json.loads(resp.read().decode())
+
+        remote_version = release.get("tag_name", "")
+        if not remote_version or remote_version <= local_version:
+            logging.info("Already up to date (%s)", local_version)
+            return False
+
+        logging.info("New version available: %s → %s", local_version, remote_version)
+
+        tracker_asset = None
+        for asset in release.get("assets", []):
+            if asset["name"] == "activity_tracker.exe":
+                tracker_asset = asset
+
+        if not tracker_asset:
+            logging.warning("No activity_tracker.exe in release %s", remote_version)
+            return False
+
+        tracker_path = _UPDATE_DIR / 'activity_tracker.exe'
+        backup_path = _UPDATE_DIR / 'activity_tracker.exe.backup'
+        if tracker_path.exists():
+            try:
+                shutil.copy2(str(tracker_path), str(backup_path))
+            except Exception:
+                pass
+
+        kill_process('activity_tracker.exe')
+        time.sleep(3)
+
+        temp_path = _UPDATE_DIR / 'activity_tracker.exe.tmp'
+        urllib.request.urlretrieve(tracker_asset["browser_download_url"], str(temp_path))
+
+        if temp_path.stat().st_size < 1_000_000:
+            logging.error("Downloaded file too small, aborting")
+            temp_path.unlink()
+            start_activity_tracker()
+            return False
+
+        if tracker_path.exists():
+            tracker_path.unlink()
+        temp_path.rename(tracker_path)
+
+        version_path = _UPDATE_DIR / 'version.txt'
+        version_path.write_text(remote_version)
+
+        start_activity_tracker()
+        logging.info("Updated to %s", remote_version)
+        return True
+
+    except Exception as e:
+        logging.error("Update check error: %s", e, exc_info=True)
+        return False
+
+
+def record_crash():
+    crash_path = _UPDATE_DIR / 'crash_count.txt'
+    try:
+        with open(crash_path, 'a') as f:
+            f.write(f"{time.time()}\n")
+    except Exception:
+        pass
+
+
+def check_crash_and_rollback():
+    backup_path = _UPDATE_DIR / 'activity_tracker.exe.backup'
+    tracker_path = _UPDATE_DIR / 'activity_tracker.exe'
+    crash_path = _UPDATE_DIR / 'crash_count.txt'
+    if not backup_path.exists():
+        return
+    try:
+        if crash_path.exists():
+            content = crash_path.read_text().strip().split('\n')
+            recent = [float(t) for t in content if time.time() - float(t) < 300]
+            if len(recent) >= MAX_CRASH_COUNT:
+                logging.critical("Tracker crashed %d times! Rolling back...", len(recent))
+                kill_process('activity_tracker.exe')
+                time.sleep(2)
+                import shutil
+                shutil.copy2(str(backup_path), str(tracker_path))
+                crash_path.unlink(missing_ok=True)
+                start_activity_tracker()
+    except Exception as e:
+        logging.error("Rollback error: %s", e)
 
 
 def kill_process(process_name):
@@ -290,6 +415,15 @@ def _get_log_dir():
 
 def upload_logs_to_supabase():
     supabase_client = init_supabase_client()
+    # Update tracker version on employee record
+    try:
+        if supabase_client:
+            pc_name_for_version = _get_pc_name()
+            supabase_client.table("employees").update({
+                "tracker_version": get_local_version()
+            }).eq("pc_name", pc_name_for_version).execute()
+    except Exception:
+        pass
     if not supabase_client:
         return
     log_dir = _get_log_dir()
@@ -332,8 +466,9 @@ def main():
 
     last_batch_upload = time.time()
     last_log_upload = time.time()
-    batch_upload_interval = 180  # 3 minutes
-    log_upload_interval = 1800  # 30 minutes
+    last_update_check = 0
+    batch_upload_interval = 180
+    log_upload_interval = 1800
 
     while True:
         try:
@@ -344,12 +479,22 @@ def main():
 
             if not process_running:
                 logging.warning("activity_tracker.exe not running, restarting...")
+                record_crash()
+                check_crash_and_rollback()
                 start_activity_tracker()
             elif process_running and not tracker_healthy:
                 logging.warning("Tracker process alive but stale. Force-killing...")
                 kill_process('activity_tracker.exe')
                 time.sleep(5)
                 start_activity_tracker()
+
+            # Auto-update check every hour
+            if current_time - last_update_check >= UPDATE_CHECK_INTERVAL:
+                try:
+                    check_and_update()
+                except Exception:
+                    pass
+                last_update_check = current_time
 
             if current_time - last_batch_upload >= batch_upload_interval:
                 try:
