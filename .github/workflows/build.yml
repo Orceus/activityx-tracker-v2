@@ -3,11 +3,10 @@ name: Build Employee Tracker
 on:
   push:
     tags:
-      - "v*"           # trigger on version tags: git tag v1.0.0 && git push --tags
-  workflow_dispatch:   # also allow manual runs from the GitHub Actions tab
+      - "v*"
+  workflow_dispatch:
 
 jobs:
-  # ── Windows build ────────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -53,96 +52,8 @@ jobs:
           path: dist/
           retention-days: 30
 
-  # ── macOS build ──────────────────────────────────────────────────────────────
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          pip install pyinstaller
-          pip install -r requirements.txt
-
-      - name: Build activity_tracker (macOS)
-        run: pyinstaller activity_tracker.spec
-
-      - name: Build activity_tracker_controller (macOS)
-        run: pyinstaller activity_tracker_controller.spec
-
-      - name: Write version.txt
-        run: |
-          VERSION="${GITHUB_REF_NAME:-dev}"
-          echo "${VERSION#v}" > dist/version.txt
-
-      - name: Copy supporting files
-        run: |
-          cp config.py dist/config.py
-          cp setup_mac.command dist/setup_mac.command
-          chmod +x dist/setup_mac.command
-
-      - name: Sign and notarize (macOS)
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          # Import certificate into temporary keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/activityx.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-          echo "$APPLE_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-
-          # Verify certificate imported correctly
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-
-          # Sign the binary with entitlements (required for PyInstaller + hardened runtime)
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk '{print $2}')
-          codesign --force --options runtime --timestamp \
-            --entitlements entitlements.plist \
-            --sign "$IDENTITY" dist/activity_tracker
-          codesign --force --options runtime --timestamp \
-            --entitlements entitlements.plist \
-            --sign "$IDENTITY" dist/activity_tracker_controller
-          echo "Signed with: $IDENTITY"
-          codesign --verify --verbose dist/activity_tracker
-          codesign --verify --verbose dist/activity_tracker_controller
-
-          # Notarize
-          ditto -c -k --keepParent dist/activity_tracker dist/activity_tracker_notarize.zip
-          xcrun notarytool submit dist/activity_tracker_notarize.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-          rm dist/activity_tracker_notarize.zip
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ActivityX-macOS
-          path: dist/
-          retention-days: 30
-
-  # ── Create GitHub Release with both builds ───────────────────────────────────
   release:
-    needs: [build-windows, build-macos]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -154,40 +65,24 @@ jobs:
           name: ActivityX-Windows
           path: release/windows
 
-      - name: Download macOS build
-        uses: actions/download-artifact@v4
-        with:
-          name: ActivityX-macOS
-          path: release/macos
-
-      - name: Zip releases
+      - name: Zip release
         run: |
           cd release
           zip -r ActivityX-Windows-${{ github.ref_name }}.zip windows/
-          zip -r ActivityX-macOS-${{ github.ref_name }}.zip macos/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/ActivityX-Windows-${{ github.ref_name }}.zip
-            release/ActivityX-macOS-${{ github.ref_name }}.zip
           body: |
             ## ActivityX Employee Tracker ${{ github.ref_name }}
 
             ### Before distributing
-            1. Open `config.py` and fill in `SUPABASE_URL`, `SUPABASE_KEY`, and `LAW_FIRM_ID`
+            1. Open `config.py` and fill in `LAW_FIRM_ID`
             2. Zip the folder and send to the client
 
             ### Client installation (Windows)
             1. Extract the zip
-            2. Run `setup.bat` — installs to AppData\Local\ActivityX and adds to Windows startup
+            2. Run `activity_tracker_controller.exe` — it will auto-register scheduled tasks and start the tracker
             3. Done — tracker runs silently in the background
-
-            ### Client installation (macOS)
-            1. Extract the zip
-            2. Double-click `setup_mac.command`
-            3. Done — tracker runs as a LaunchAgent
-
-            ### Updating
-            To update, re-run the setup script with the new version.
