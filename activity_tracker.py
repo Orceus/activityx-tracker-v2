@@ -1200,14 +1200,10 @@ class OptimizedDataSyncer:
         _date = optimized_data['d']
         _start = optimized_data['s']
         _end = optimized_data['e']
-        # Add local timezone offset so PostgreSQL stores correct UTC
-        from datetime import datetime as _dt, timezone as _tz
-        _tz_offset = _dt.now(_tz.utc).astimezone().strftime('%z')  # e.g. "+0300"
-        _tz_suffix = f"{_tz_offset[:3]}:{_tz_offset[3:]}"  # "+03:00"
         if _date and _start and 'T' not in str(_start):
-            _start = f"{_date}T{_start}{_tz_suffix}"
+            _start = f"{_date}T{_start}"
         if _date and _end and 'T' not in str(_end):
-            _end = f"{_date}T{_end}{_tz_suffix}"
+            _end = f"{_date}T{_end}"
         db_data = {
             'batch_id': batch_id,
             'user_id': self.user_id,
@@ -1616,14 +1612,10 @@ class OptimizedDataSyncer:
         _date = optimized_data['d']
         _start = optimized_data['s']
         _end = optimized_data['e']
-        # Add local timezone offset so PostgreSQL stores correct UTC
-        from datetime import datetime as _dt, timezone as _tz
-        _tz_offset = _dt.now(_tz.utc).astimezone().strftime('%z')  # e.g. "+0300"
-        _tz_suffix = f"{_tz_offset[:3]}:{_tz_offset[3:]}"  # "+03:00"
         if _date and _start and 'T' not in str(_start):
-            _start = f"{_date}T{_start}{_tz_suffix}"
+            _start = f"{_date}T{_start}"
         if _date and _end and 'T' not in str(_end):
-            _end = f"{_date}T{_end}{_tz_suffix}"
+            _end = f"{_date}T{_end}"
         db_data = {
             'batch_id': batch_id,
             'user_id': self.user_id,
