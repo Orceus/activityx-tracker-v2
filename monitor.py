@@ -248,6 +248,23 @@ def get_local_version():
     return "v0.0.0"
 
 
+def _get_ssl_context():
+    """Get an SSL context that works in PyInstaller builds."""
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        pass
+    # Windows: load certs from Windows certificate store
+    if sys.platform == 'win32':
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.load_default_certs()
+        return ctx
+    # Fallback: use default context (works on most systems with proper certs)
+    return ssl.create_default_context()
+
+
 def check_and_update():
     try:
         import urllib.request
@@ -257,9 +274,10 @@ def check_and_update():
         local_version = get_local_version()
         logging.info("Checking for updates... current: %s", local_version)
 
+        ssl_ctx = _get_ssl_context()
         url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
         req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
             release = json.loads(resp.read().decode())
 
         remote_version = release.get("tag_name", "")
@@ -290,7 +308,10 @@ def check_and_update():
         time.sleep(3)
 
         temp_path = _UPDATE_DIR / 'activity_tracker.exe.tmp'
-        urllib.request.urlretrieve(tracker_asset["browser_download_url"], str(temp_path))
+        download_req = urllib.request.Request(tracker_asset["browser_download_url"])
+        with urllib.request.urlopen(download_req, context=ssl_ctx) as dl_resp:
+            with open(str(temp_path), 'wb') as dl_file:
+                dl_file.write(dl_resp.read())
 
         if temp_path.stat().st_size < 1_000_000:
             logging.error("Downloaded file too small, aborting")
