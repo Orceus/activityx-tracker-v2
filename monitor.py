@@ -28,22 +28,6 @@ _setup_controller_logging()
 # ── Single-instance guard ─────────────────────────────────────────────────────
 if sys.platform == 'win32':
     import ctypes
-    # Kill any other controller/monitor instances first
-    for _proc_name in ['activity_tracker_controller.exe', 'monitor.exe']:
-        try:
-            # Get our own PID to avoid killing ourselves
-            _my_pid = os.getpid()
-            subprocess.call(
-                ['wmic', 'process', 'where',
-                 f"name='{_proc_name}' and processid!='{_my_pid}'",
-                 'call', 'terminate'],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                creationflags=0x08000000  # CREATE_NO_WINDOW
-            )
-        except Exception:
-            pass
-    import time as _t
-    _t.sleep(2)  # Let old processes die
     _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\ActivityXController")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         sys.exit(0)
