@@ -258,6 +258,70 @@ def check_last_alive():
         return False
 
 
+def _get_pc_name():
+    try:
+        _cfg2 = _load_config()
+        from config import get_user_id
+        return get_user_id()
+    except Exception:
+        return f"user_{os.environ.get('COMPUTERNAME', 'unknown')}"
+
+
+def _read_last_lines(file_path, n=100):
+    try:
+        if not file_path.exists():
+            return ""
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+        return "".join(lines[-n:])
+    except Exception:
+        return ""
+
+
+def _get_log_dir():
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+    else:
+        base = Path.home() / '.local' / 'share'
+    return base / 'ActivityX'
+
+
+def upload_logs_to_supabase():
+    supabase_client = init_supabase_client()
+    if not supabase_client:
+        return
+    log_dir = _get_log_dir()
+    pc_name = _get_pc_name()
+    tracker_running = is_process_running('activity_tracker.exe')
+    last_alive = None
+    try:
+        alive_path = log_dir / 'last_alive.txt'
+        if alive_path.exists():
+            last_alive = alive_path.read_text().strip()
+    except Exception:
+        pass
+
+    law_firm_id = LAW_FIRM_ID
+
+    for log_type, filename, lines in [('tracker', 'tracker.log', 100), ('controller', 'controller.log', 50)]:
+        content = _read_last_lines(log_dir / filename, lines)
+        if content:
+            try:
+                supabase_client.table("tracker_logs").insert({
+                    'law_firm_id': law_firm_id,
+                    'pc_name': pc_name,
+                    'log_type': log_type,
+                    'log_content': content,
+                    'last_alive': last_alive,
+                    'tracker_running': tracker_running,
+                }).execute()
+                logging.info("Uploaded %s log to Supabase", log_type)
+            except Exception as e:
+                logging.error("Failed to upload %s log: %s", log_type, e)
+
+
 def main():
     if sys.platform == 'win32':
         import ctypes
@@ -267,7 +331,9 @@ def main():
     time.sleep(60)
 
     last_batch_upload = time.time()
+    last_log_upload = time.time()
     batch_upload_interval = 180  # 3 minutes
+    log_upload_interval = 1800  # 30 minutes
 
     while True:
         try:
@@ -291,6 +357,13 @@ def main():
                 except Exception:
                     pass
                 last_batch_upload = current_time
+
+            if current_time - last_log_upload >= log_upload_interval:
+                try:
+                    upload_logs_to_supabase()
+                except Exception:
+                    pass
+                last_log_upload = current_time
 
             time.sleep(30)
 
