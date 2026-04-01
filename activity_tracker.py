@@ -1576,7 +1576,7 @@ class OptimizedDataSyncer:
         
         # Add only the valid inactive periods (within batch window)
         if valid_inactive_periods:
-            optimized_data['ip'] = valid_inactive_periods
+            optimized_data['inp'] = valid_inactive_periods
         
 
         
