@@ -186,37 +186,27 @@ def is_process_running(process_name):
         return False
 
 
-def _find_tracker_exe():
-    """Find activity_tracker exe — check exe's own dir first, then AppData."""
-    exe_name = 'activity_tracker.exe' if sys.platform == 'win32' else 'activity_tracker'
-    # Check same directory as controller
-    own_dir = Path(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)))
-    candidate = own_dir / exe_name
-    if candidate.exists():
-        return candidate
-    # Check AppData
-    return _UPDATE_DIR / exe_name
-
-
 def start_activity_tracker():
-    tracker_path = _find_tracker_exe()
-    if not tracker_path.exists():
-        logging.error("activity_tracker not found at %s", tracker_path)
-        return False
+    if sys.platform == 'win32':
+        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+        tracker_path = base / 'ActivityX' / 'activity_tracker.exe'
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+        tracker_path = base / 'ActivityX' / 'activity_tracker'
+    else:
+        base = Path.home() / '.local' / 'share'
+        tracker_path = base / 'ActivityX' / 'activity_tracker'
     try:
-        kwargs = {
-            'stdout': subprocess.DEVNULL,
-            'stderr': subprocess.DEVNULL,
-            'stdin': subprocess.DEVNULL,
-            'cwd': str(tracker_path.parent),
-        }
-        if sys.platform == 'win32':
-            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
-        subprocess.Popen([str(tracker_path)], **kwargs)
-        logging.info("Started tracker from %s", tracker_path)
+        subprocess.Popen(
+            [str(tracker_path)],
+            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            cwd=str(tracker_path.parent),
+        )
         return True
-    except Exception as e:
-        logging.error("Failed to start tracker: %s", e)
+    except Exception:
         return False
 
 
@@ -244,7 +234,6 @@ _UPDATE_DIR = _get_log_dir_for_update()
 
 
 def get_local_version():
-    # Check AppData first, then exe's own directory
     for base in [_UPDATE_DIR, Path(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)))]:
         version_path = base / 'version.txt'
         try:
@@ -258,13 +247,11 @@ def get_local_version():
 def _get_ssl_context():
     """Get an SSL context that works in PyInstaller builds."""
     import ssl
-    # Try certifi first (bundled via PyInstaller hiddenimport)
     try:
         import certifi
         return ssl.create_default_context(cafile=certifi.where())
     except (ImportError, Exception):
         pass
-    # Try Windows certificate store
     if sys.platform == 'win32':
         try:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -272,11 +259,9 @@ def _get_ssl_context():
             return ctx
         except Exception:
             pass
-    # Try default context
     try:
         return ssl.create_default_context()
     except Exception:
-        # Last resort: no verification (still encrypted, just no cert check)
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -499,47 +484,19 @@ def upload_logs_to_supabase():
                 logging.error("Failed to upload %s log: %s", log_type, e)
 
 
-def _ensure_scheduled_tasks():
-    """Always register Windows Scheduled Tasks pointing to current exe."""
-    if sys.platform != 'win32':
-        return
-    try:
-        exe_path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)
-        # Always re-register to ensure tasks point to this exe
-        subprocess.call(
-            ['schtasks', '/Create', '/TN', 'ActivityX Controller',
-             '/TR', f'"{exe_path}"', '/SC', 'MINUTE', '/MO', '5', '/F'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-        subprocess.call(
-            ['schtasks', '/Create', '/TN', 'ActivityX Controller Startup',
-             '/TR', f'"{exe_path}"', '/SC', 'ONLOGON', '/F'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-        logging.info("Registered Windows Scheduled Tasks → %s", exe_path)
-    except Exception as e:
-        logging.error("Failed to register scheduled tasks: %s", e)
-
-
 def main():
     if sys.platform == 'win32':
         import ctypes
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
 
     logging.info("Controller started")
-    _ensure_scheduled_tasks()
     # Report version immediately on startup
     try:
-        supabase_client = init_supabase_client()
-        if supabase_client:
-            pc_name = _get_pc_name()
-            version = get_local_version()
-            supabase_client.table("employees").update({
-                "tracker_version": version
-            }).eq("pc_name", pc_name).execute()
-            logging.info("Reported version %s for %s", version, pc_name)
+        _sb = init_supabase_client()
+        if _sb:
+            _sb.table("employees").update({
+                "tracker_version": get_local_version()
+            }).eq("pc_name", _get_pc_name()).execute()
     except Exception:
         pass
     time.sleep(60)
