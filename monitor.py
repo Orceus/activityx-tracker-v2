@@ -330,7 +330,24 @@ def check_and_update():
         version_path.write_text(remote_version)
 
         start_activity_tracker()
-        logging.info("Updated to %s", remote_version)
+        logging.info("Updated tracker to %s", remote_version)
+
+        # Also download new controller for next restart
+        controller_asset = None
+        for asset in release.get("assets", []):
+            if asset["name"] == "activity_tracker_controller.exe":
+                controller_asset = asset
+        if controller_asset:
+            try:
+                controller_new = _UPDATE_DIR / 'activity_tracker_controller.exe.new'
+                ctrl_req = urllib.request.Request(controller_asset["browser_download_url"])
+                with urllib.request.urlopen(ctrl_req, context=ssl_ctx) as ctrl_resp:
+                    with open(str(controller_new), 'wb') as ctrl_file:
+                        ctrl_file.write(ctrl_resp.read())
+                logging.info("Downloaded new controller, will apply on next restart")
+            except Exception as e:
+                logging.warning("Failed to download new controller: %s", e)
+
         return True
 
     except Exception as e:
@@ -490,6 +507,19 @@ def main():
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
 
     logging.info("Controller started")
+    # Check if a new controller was downloaded — swap and restart
+    if sys.platform == 'win32':
+        new_controller = _UPDATE_DIR / 'activity_tracker_controller.exe.new'
+        if new_controller.exists() and new_controller.stat().st_size > 1_000_000:
+            try:
+                current_exe = Path(sys.executable)
+                import shutil
+                shutil.copy2(str(new_controller), str(current_exe))
+                new_controller.unlink()
+                logging.info("Controller updated, restarting...")
+                os.execv(str(current_exe), [str(current_exe)])
+            except Exception as e:
+                logging.error("Controller self-update failed: %s", e)
     # Report version immediately on startup
     try:
         _sb = init_supabase_client()
