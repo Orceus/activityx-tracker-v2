@@ -570,9 +570,17 @@ def main():
     batch_upload_interval = 180
     log_upload_interval = 1800
 
+    last_loop_time = time.time()
+
     while True:
         try:
             current_time = time.time()
+
+            # Detect wake from sleep — if loop gap > 2 minutes, system was sleeping
+            if current_time - last_loop_time > 120:
+                logging.info("Detected wake from sleep (gap: %.0fs), resetting grace period", current_time - last_loop_time)
+                last_tracker_start = current_time
+            last_loop_time = current_time
 
             process_running = is_process_running('activity_tracker.exe')
             # Only check staleness after tracker has had time to sync (10 min grace)
