@@ -30,7 +30,11 @@ powershell -ExecutionPolicy Bypass -Command "Get-ChildItem '!SETUP_DIR!' -Recurs
 echo Copying files...
 copy /Y "!SETUP_DIR!activity_tracker.exe"            "!INSTALL_DIR!\" >nul
 copy /Y "!SETUP_DIR!activity_tracker_controller.exe" "!INSTALL_DIR!\" >nul
-copy /Y "!SETUP_DIR!config.py"                       "!INSTALL_DIR!\" >nul
+if exist "!SETUP_DIR!version.txt" copy /Y "!SETUP_DIR!version.txt" "!INSTALL_DIR!\" >nul
+:: Only copy config.py if it doesn't exist (preserve client's LAW_FIRM_ID)
+if not exist "!INSTALL_DIR!\config.py" (
+    copy /Y "!SETUP_DIR!config.py" "!INSTALL_DIR!\" >nul
+)
 
 if not exist "!INSTALL_DIR!\activity_tracker.exe" (
     echo ERROR: Failed to copy files.
@@ -44,9 +48,7 @@ powershell -ExecutionPolicy Bypass -Command "Get-ChildItem '!INSTALL_DIR!' -Recu
 
 :: ── Windows Defender exclusion ───────────────────────────────────────────────
 echo Configuring Windows Defender...
-:: Add folder and process exclusions
 powershell -ExecutionPolicy Bypass -Command "Add-MpPreference -ExclusionPath '!INSTALL_DIR!'; Add-MpPreference -ExclusionPath '!SETUP_DIR!'; Add-MpPreference -ExclusionProcess 'activity_tracker.exe'; Add-MpPreference -ExclusionProcess 'activity_tracker_controller.exe'" >nul 2>&1
-:: Remove any existing threat detections for our files so they aren't blocked
 powershell -ExecutionPolicy Bypass -Command "Remove-MpThreat -ErrorAction SilentlyContinue" >nul 2>&1
 
 :: ── Firewall rules ──────────────────────────────────────────────────────────
@@ -58,17 +60,23 @@ netsh advfirewall firewall add rule name="ActivityX Tracker" dir=in action=allow
 netsh advfirewall firewall add rule name="ActivityX Controller" dir=out action=allow program="!INSTALL_DIR!\activity_tracker_controller.exe" >nul 2>&1
 netsh advfirewall firewall add rule name="ActivityX Controller" dir=in action=allow program="!INSTALL_DIR!\activity_tracker_controller.exe" >nul 2>&1
 
-:: ── Startup shortcuts ───────────────────────────────────────────────────────
-echo Creating startup shortcuts...
+:: ── Scheduled tasks (replaces startup shortcuts) ────────────────────────────
+echo Creating scheduled tasks...
+schtasks /Delete /TN "ActivityX Controller" /F >nul 2>&1
+schtasks /Create /TN "ActivityX Controller" /TR "\"!INSTALL_DIR!\activity_tracker_controller.exe\"" /SC MINUTE /MO 5 /F >nul 2>&1
+schtasks /Delete /TN "ActivityX Controller Startup" /F >nul 2>&1
+schtasks /Create /TN "ActivityX Controller Startup" /TR "\"!INSTALL_DIR!\activity_tracker_controller.exe\"" /SC ONLOGON /F >nul 2>&1
+
+:: ── Remove old startup shortcuts (if any) ───────────────────────────────────
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+del "!STARTUP!\ActivityXTracker.lnk" >nul 2>&1
+del "!STARTUP!\ActivityXController.lnk" >nul 2>&1
+del "!STARTUP!\ActivityTracker.lnk" >nul 2>&1
+del "!STARTUP!\ActivityTrackerController.lnk" >nul 2>&1
 
-powershell -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s1 = $ws.CreateShortcut('!STARTUP!\ActivityXTracker.lnk'); $s1.TargetPath = '!INSTALL_DIR!\activity_tracker.exe'; $s1.WorkingDirectory = '!INSTALL_DIR!'; $s1.Save(); $s2 = $ws.CreateShortcut('!STARTUP!\ActivityXController.lnk'); $s2.TargetPath = '!INSTALL_DIR!\activity_tracker_controller.exe'; $s2.WorkingDirectory = '!INSTALL_DIR!'; $s2.Save()" >nul 2>&1
-
-:: ── Start tracker ───────────────────────────────────────────────────────────
-echo Starting tracker...
+:: ── Start controller only (it will start the tracker) ───────────────────────
+echo Starting controller...
 pushd "!INSTALL_DIR!"
-start "" "activity_tracker.exe"
-timeout /t 2 /nobreak >nul
 start "" "activity_tracker_controller.exe"
 popd
 
@@ -77,6 +85,6 @@ echo ========================================
 echo    Installation complete!
 echo ========================================
 echo Installed to: !INSTALL_DIR!
-echo The tracker will now start automatically on every Windows login.
+echo The tracker will start automatically on every Windows login.
 echo.
 pause
