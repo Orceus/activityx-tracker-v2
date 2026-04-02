@@ -223,7 +223,7 @@ def start_activity_tracker():
 
 STALE_THRESHOLD_SECONDS = 600  # 10 minutes
 GITHUB_REPO = "Orceus/activityx-tracker-v2"
-UPDATE_CHECK_INTERVAL = 3600  # 1 hour
+UPDATE_CHECK_INTERVAL = 21600  # 6 hours
 MAX_CRASH_COUNT = 3
 
 
