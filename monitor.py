@@ -503,7 +503,8 @@ def upload_logs_to_supabase():
     law_firm_id = LAW_FIRM_ID
 
     for log_type, filename, lines in [('tracker', 'tracker.log', 100), ('controller', 'controller.log', 50)]:
-        content = _read_last_lines(log_dir / filename, lines)
+        log_path = log_dir / filename
+        content = _read_last_lines(log_path, lines)
         if content:
             try:
                 supabase_client.table("tracker_logs").insert({
@@ -515,8 +516,25 @@ def upload_logs_to_supabase():
                     'tracker_running': tracker_running,
                 }).execute()
                 logging.info("Uploaded %s log to Supabase", log_type)
+                # Truncate log after successful upload
+                try:
+                    if log_type != 'controller':  # Don't truncate our own log while writing
+                        open(str(log_path), 'w').close()
+                except Exception:
+                    pass
             except Exception as e:
                 logging.error("Failed to upload %s log: %s", log_type, e)
+        # Safety cap: if log file exceeds 5MB, keep only last 1MB
+        try:
+            if log_path.exists() and log_path.stat().st_size > 5 * 1024 * 1024:
+                with open(str(log_path), 'r', encoding='utf-8', errors='replace') as f:
+                    f.seek(-1024 * 1024, 2)  # Seek to last 1MB
+                    f.readline()  # Skip partial line
+                    tail = f.read()
+                with open(str(log_path), 'w', encoding='utf-8') as f:
+                    f.write(tail)
+        except Exception:
+            pass
 
 
 def _ensure_scheduled_tasks():
