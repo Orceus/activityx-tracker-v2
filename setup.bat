@@ -38,10 +38,7 @@ echo Copying files...
 copy /Y "!SETUP_DIR!activity_tracker.exe"            "!INSTALL_DIR!\" >nul
 copy /Y "!SETUP_DIR!activity_tracker_controller.exe" "!INSTALL_DIR!\" >nul
 if exist "!SETUP_DIR!version.txt" copy /Y "!SETUP_DIR!version.txt" "!INSTALL_DIR!\" >nul
-:: Only copy config.py if it doesn't exist (preserve client's LAW_FIRM_ID)
-if not exist "!INSTALL_DIR!\config.py" (
-    copy /Y "!SETUP_DIR!config.py" "!INSTALL_DIR!\" >nul
-)
+copy /Y "!SETUP_DIR!config.py" "!INSTALL_DIR!\" >nul
 
 if not exist "!INSTALL_DIR!\activity_tracker.exe" (
     echo ERROR: Failed to copy files.
