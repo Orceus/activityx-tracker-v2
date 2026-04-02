@@ -100,6 +100,20 @@ if exist "keytrk_data" (
     echo    WARNING: keytrk_data not found in current directory, skipping
 )
 
+if exist "version.txt" (
+    copy "version.txt" "%INSTALL_DIR%\" >nul
+    echo    Successfully copied: version.txt
+)
+
+if exist "config.py" (
+    if not exist "%INSTALL_DIR%\config.py" (
+        copy "config.py" "%INSTALL_DIR%\" >nul
+        echo    Successfully copied: config.py
+    ) else (
+        echo    Skipped config.py (already exists, keeping existing)
+    )
+)
+
 echo.
 echo Step 4: Creating startup shortcuts...
 echo ----------------------------------------
