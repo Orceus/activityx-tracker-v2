@@ -20,6 +20,13 @@ set "INSTALL_DIR=%LOCALAPPDATA%\ActivityX"
 if not "%~1"=="" set "SETUP_DIR=%~1"
 if "%~1"=="" set "SETUP_DIR=%~dp0"
 
+:: ── Kill running instances first ─────────────────────────────────────────────
+echo Stopping running instances...
+taskkill /F /IM activity_tracker.exe >nul 2>&1
+taskkill /F /IM activity_tracker_controller.exe >nul 2>&1
+taskkill /F /IM monitor.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+
 echo Creating installation directory...
 if not exist "!INSTALL_DIR!" mkdir "!INSTALL_DIR!"
 
