@@ -94,9 +94,21 @@ def upload_optimized_batches():
     if not documents_path.exists():
         return
 
-    batch_files = list(documents_path.glob("optimized_batch_*.json"))
+    batch_files = sorted(documents_path.glob("optimized_batch_*.json"))
     if not batch_files:
         return
+
+    # Cap at 500 files — delete oldest if over limit
+    MAX_OFFLINE_BATCHES = 500
+    if len(batch_files) > MAX_OFFLINE_BATCHES:
+        excess = batch_files[:-MAX_OFFLINE_BATCHES]
+        for old_file in excess:
+            try:
+                old_file.unlink()
+            except Exception:
+                pass
+        batch_files = batch_files[-MAX_OFFLINE_BATCHES:]
+        logging.warning("Deleted %d old offline batches (over %d limit)", len(excess), MAX_OFFLINE_BATCHES)
 
     supabase_client = init_supabase_client()
     if not supabase_client:
