@@ -1,4 +1,4 @@
-name: Build Employee Tracker
+name: ActivityX
 
 on:
   push:
