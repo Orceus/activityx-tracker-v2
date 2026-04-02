@@ -321,15 +321,28 @@ def check_and_update():
             with open(str(temp_path), 'wb') as dl_file:
                 dl_file.write(dl_resp.read())
 
-        if temp_path.stat().st_size < 1_000_000:
-            logging.error("Downloaded file too small, aborting")
-            temp_path.unlink()
+        if not temp_path.exists() or temp_path.stat().st_size < 1_000_000:
+            logging.error("Downloaded file missing or too small, aborting")
+            if temp_path.exists():
+                temp_path.unlink()
             start_activity_tracker()
             return False
 
-        if tracker_path.exists():
-            tracker_path.unlink()
-        temp_path.rename(tracker_path)
+        # Rename new file into place — don't delete old until rename succeeds
+        try:
+            if tracker_path.exists():
+                tracker_path.unlink()
+            temp_path.rename(tracker_path)
+        except Exception as e:
+            logging.error("Failed to replace tracker exe: %s", e)
+            # Restore from backup if original was deleted
+            if not tracker_path.exists() and backup_path.exists():
+                shutil.copy2(str(backup_path), str(tracker_path))
+                logging.info("Restored tracker from backup")
+            if temp_path.exists():
+                temp_path.unlink()
+            start_activity_tracker()
+            return False
 
         version_path = _UPDATE_DIR / 'version.txt'
         version_path.write_text(remote_version)
