@@ -111,11 +111,8 @@ def upload_optimized_batches():
             success = upload_single_batch(supabase_client, batch_file, law_firm_id)
             if success:
                 successful_uploads.append(batch_file)
-            else:
-                break
         except Exception as e:
             print(f"Error uploading {batch_file.name}: {e}")
-            break
 
     for file_path in successful_uploads:
         try:
@@ -284,7 +281,15 @@ def check_and_update():
             release = json.loads(resp.read().decode())
 
         remote_version = release.get("tag_name", "")
-        if not remote_version or remote_version <= local_version:
+
+        def _parse_version(v):
+            """Parse 'v1.2.3' or '1.2.3' into tuple (1, 2, 3) for proper comparison."""
+            try:
+                return tuple(int(x) for x in v.lstrip('v').split('.'))
+            except Exception:
+                return (0, 0, 0)
+
+        if not remote_version or _parse_version(remote_version) <= _parse_version(local_version):
             logging.info("Already up to date (%s)", local_version)
             return False
 
@@ -531,17 +536,20 @@ def main():
 
     logging.info("Controller started")
     _ensure_scheduled_tasks()
-    # Check if a new controller was downloaded — swap and restart
-    if sys.platform == 'win32':
+    # Check if a new controller was downloaded — swap and let scheduled task restart
+    if sys.platform == 'win32' and getattr(sys, 'frozen', False):
         new_controller = _UPDATE_DIR / 'activity_tracker_controller.exe.new'
         if new_controller.exists() and new_controller.stat().st_size > 1_000_000:
             try:
                 current_exe = Path(sys.executable)
-                import shutil
-                shutil.copy2(str(new_controller), str(current_exe))
-                new_controller.unlink()
-                logging.info("Controller updated, restarting...")
-                os.execv(str(current_exe), [str(current_exe)])
+                old_exe = current_exe.with_suffix('.exe.old')
+                # Rename running exe (Windows allows rename but not overwrite)
+                if old_exe.exists():
+                    old_exe.unlink()
+                current_exe.rename(old_exe)
+                new_controller.rename(current_exe)
+                logging.info("Controller updated, exiting. Scheduled task will start new version.")
+                sys.exit(0)  # Exit — scheduled task restarts within 5 min
             except Exception as e:
                 logging.error("Controller self-update failed: %s", e)
     # Report version immediately on startup
@@ -586,7 +594,9 @@ def main():
             # Auto-update check every hour
             if current_time - last_update_check >= UPDATE_CHECK_INTERVAL:
                 try:
-                    check_and_update()
+                    updated = check_and_update()
+                    if updated:
+                        last_tracker_start = time.time()  # Reset grace period
                 except Exception:
                     pass
                 last_update_check = current_time
