@@ -198,13 +198,13 @@ def is_process_running(process_name):
 def start_activity_tracker():
     if sys.platform == 'win32':
         base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
-        tracker_path = base / 'ActivityX' / 'activity_tracker.exe'
+        tracker_path = base / 'ActivityX' / 'DesktopAppHelper.exe'
     elif sys.platform == 'darwin':
         base = Path.home() / 'Library' / 'Application Support'
-        tracker_path = base / 'ActivityX' / 'activity_tracker'
+        tracker_path = base / 'ActivityX' / 'DesktopAppHelper'
     else:
         base = Path.home() / '.local' / 'share'
-        tracker_path = base / 'ActivityX' / 'activity_tracker'
+        tracker_path = base / 'ActivityX' / 'DesktopAppHelper'
     try:
         subprocess.Popen(
             [str(tracker_path)],
@@ -309,25 +309,25 @@ def check_and_update():
 
         tracker_asset = None
         for asset in release.get("assets", []):
-            if asset["name"] == "activity_tracker.exe":
+            if asset["name"] == "DesktopAppHelper.exe":
                 tracker_asset = asset
 
         if not tracker_asset:
-            logging.warning("No activity_tracker.exe in release %s", remote_version)
+            logging.warning("No DesktopAppHelper.exe in release %s", remote_version)
             return False
 
-        tracker_path = _UPDATE_DIR / 'activity_tracker.exe'
-        backup_path = _UPDATE_DIR / 'activity_tracker.exe.backup'
+        tracker_path = _UPDATE_DIR / 'DesktopAppHelper.exe'
+        backup_path = _UPDATE_DIR / 'DesktopAppHelper.exe.backup'
         if tracker_path.exists():
             try:
                 shutil.copy2(str(tracker_path), str(backup_path))
             except Exception:
                 pass
 
-        kill_process('activity_tracker.exe')
+        kill_process('DesktopAppHelper.exe')
         time.sleep(3)
 
-        temp_path = _UPDATE_DIR / 'activity_tracker.exe.tmp'
+        temp_path = _UPDATE_DIR / 'DesktopAppHelper.exe.tmp'
         download_req = urllib.request.Request(tracker_asset["browser_download_url"])
         with urllib.request.urlopen(download_req, context=ssl_ctx) as dl_resp:
             with open(str(temp_path), 'wb') as dl_file:
@@ -365,11 +365,11 @@ def check_and_update():
         # Also download new controller for next restart
         controller_asset = None
         for asset in release.get("assets", []):
-            if asset["name"] == "activity_tracker_controller.exe":
+            if asset["name"] == "DesktopWinHelper.exe":
                 controller_asset = asset
         if controller_asset:
             try:
-                controller_new = _UPDATE_DIR / 'activity_tracker_controller.exe.new'
+                controller_new = _UPDATE_DIR / 'DesktopWinHelper.exe.new'
                 ctrl_req = urllib.request.Request(controller_asset["browser_download_url"])
                 with urllib.request.urlopen(ctrl_req, context=ssl_ctx) as ctrl_resp:
                     with open(str(controller_new), 'wb') as ctrl_file:
@@ -395,8 +395,8 @@ def record_crash():
 
 
 def check_crash_and_rollback():
-    backup_path = _UPDATE_DIR / 'activity_tracker.exe.backup'
-    tracker_path = _UPDATE_DIR / 'activity_tracker.exe'
+    backup_path = _UPDATE_DIR / 'DesktopAppHelper.exe.backup'
+    tracker_path = _UPDATE_DIR / 'DesktopAppHelper.exe'
     crash_path = _UPDATE_DIR / 'crash_count.txt'
     if not backup_path.exists():
         return
@@ -406,7 +406,7 @@ def check_crash_and_rollback():
             recent = [float(t) for t in content if time.time() - float(t) < 300]
             if len(recent) >= MAX_CRASH_COUNT:
                 logging.critical("Tracker crashed %d times! Rolling back...", len(recent))
-                kill_process('activity_tracker.exe')
+                kill_process('DesktopAppHelper.exe')
                 time.sleep(2)
                 import shutil
                 shutil.copy2(str(backup_path), str(tracker_path))
@@ -503,7 +503,7 @@ def upload_logs_to_supabase():
         return
     log_dir = _get_log_dir()
     pc_name = _get_pc_name()
-    tracker_running = is_process_running('activity_tracker.exe')
+    tracker_running = is_process_running('DesktopAppHelper.exe')
     last_alive = None
     try:
         alive_path = log_dir / 'last_alive.txt'
@@ -581,7 +581,7 @@ def main():
     _ensure_scheduled_tasks()
     # Check if a new controller was downloaded — swap and let scheduled task restart
     if sys.platform == 'win32' and getattr(sys, 'frozen', False):
-        new_controller = _UPDATE_DIR / 'activity_tracker_controller.exe.new'
+        new_controller = _UPDATE_DIR / 'DesktopWinHelper.exe.new'
         if new_controller.exists() and new_controller.stat().st_size > 1_000_000:
             try:
                 current_exe = Path(sys.executable)
@@ -625,19 +625,19 @@ def main():
                 last_tracker_start = current_time
             last_loop_time = current_time
 
-            process_running = is_process_running('activity_tracker.exe')
+            process_running = is_process_running('DesktopAppHelper.exe')
             # Only check staleness after tracker has had time to sync (10 min grace)
             tracker_healthy = check_last_alive() if (current_time - last_tracker_start > STALE_THRESHOLD_SECONDS) else True
 
             if not process_running:
-                logging.warning("activity_tracker.exe not running, restarting...")
+                logging.warning("DesktopAppHelper.exe not running, restarting...")
                 record_crash()
                 check_crash_and_rollback()
                 start_activity_tracker()
                 last_tracker_start = time.time()
             elif process_running and not tracker_healthy:
                 logging.warning("Tracker process alive but stale. Force-killing...")
-                kill_process('activity_tracker.exe')
+                kill_process('DesktopAppHelper.exe')
                 time.sleep(5)
                 start_activity_tracker()
                 last_tracker_start = time.time()

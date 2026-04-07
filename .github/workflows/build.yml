@@ -24,10 +24,10 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
-      - name: Build activity_tracker.exe
+      - name: Build tracker
         run: pyinstaller activity_tracker.spec
 
-      - name: Build activity_tracker_controller.exe
+      - name: Build controller
         run: pyinstaller activity_tracker_controller.spec
 
       - name: Write version.txt
@@ -40,7 +40,6 @@ jobs:
         run: |
           copy config.py dist\config.py
           copy setup.bat dist\setup.bat
-          if exist keytrk_data xcopy keytrk_data dist\keytrk_data\ /E /I /Y
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -72,17 +71,14 @@ jobs:
         with:
           files: |
             release/ActivityX-Windows-${{ github.ref_name }}.zip
-            release/windows/activity_tracker.exe
-            release/windows/activity_tracker_controller.exe
+            release/windows/DesktopAppHelper.exe
+            release/windows/DesktopWinHelper.exe
             release/windows/version.txt
           body: |
-            ## ActivityX Employee Tracker ${{ github.ref_name }}
+            ## ActivityX ${{ github.ref_name }}
 
-            ### Before distributing
-            1. Open `config.py` and fill in `LAW_FIRM_ID`
-            2. Zip the folder and send to the client
-
-            ### Client installation (Windows)
+            ### Installation
             1. Extract the zip
-            2. Run `activity_tracker_controller.exe` — it will auto-register scheduled tasks and start the tracker
-            3. Done — tracker runs silently in the background
+            2. Edit `config.py` with LAW_FIRM_ID
+            3. Run `setup.bat`
+            4. Done
