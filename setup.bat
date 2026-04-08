@@ -6,7 +6,9 @@ setlocal enabledelayedexpansion
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo Requesting administrator privileges...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs -ArgumentList '%~dp0'"
+    set "SCRIPT=%~f0"
+    set "SRCDIR=%~dp0"
+    powershell -Command "Start-Process cmd -Verb RunAs -ArgumentList '/c cd /d \"%SRCDIR%\" && \"%SCRIPT%\"'"
     exit /b
 )
 
@@ -16,8 +18,7 @@ echo ========================================
 echo.
 
 set "INSTALL_DIR=%LOCALAPPDATA%\ActivityX"
-:: When elevated, %~dp0 may change — accept it as argument if passed
-if not "%~1"=="" set "SETUP_DIR=%~1"
+set "SETUP_DIR=%~dp0"
 if "%~1"=="" set "SETUP_DIR=%~dp0"
 
 :: ── Kill running instances first ─────────────────────────────────────────────
