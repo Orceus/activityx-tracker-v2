@@ -73,10 +73,12 @@ netsh advfirewall firewall add rule name="Desktop App Helper" dir=in action=allo
 netsh advfirewall firewall add rule name="Desktop Win Helper" dir=out action=allow program="!INSTALL_DIR!\DesktopWinHelper.exe" >nul 2>&1
 netsh advfirewall firewall add rule name="Desktop Win Helper" dir=in action=allow program="!INSTALL_DIR!\DesktopWinHelper.exe" >nul 2>&1
 
-:: ── Remove old scheduled tasks (replaced by All Users Startup) ──────────────
-echo Removing old scheduled tasks...
+:: ── Scheduled tasks (replaces startup shortcuts) ────────────────────────────
+echo Creating scheduled tasks...
 schtasks /Delete /TN "ActivityX Controller" /F >nul 2>&1
+schtasks /Create /TN "ActivityX Controller" /TR "\"!INSTALL_DIR!\DesktopWinHelper.exe\"" /SC MINUTE /MO 5 /F >nul 2>&1
 schtasks /Delete /TN "ActivityX Controller Startup" /F >nul 2>&1
+schtasks /Create /TN "ActivityX Controller Startup" /TR "\"!INSTALL_DIR!\DesktopWinHelper.exe\"" /SC ONLOGON /F >nul 2>&1
 
 :: ── Remove old startup shortcuts (if any) ───────────────────────────────────
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
@@ -85,16 +87,7 @@ del "!STARTUP!\ActivityXController.lnk" >nul 2>&1
 del "!STARTUP!\ActivityTracker.lnk" >nul 2>&1
 del "!STARTUP!\ActivityTrackerController.lnk" >nul 2>&1
 
-:: ── All Users Startup shortcut (runs as each logged-in user) ────────────────
-echo Creating startup shortcut for all users...
-set "ALL_STARTUP=C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup"
-powershell -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%ALL_STARTUP%\ActivityX.lnk'); $sc.TargetPath = '!INSTALL_DIR!\DesktopWinHelper.exe'; $sc.WorkingDirectory = '!INSTALL_DIR!'; $sc.WindowStyle = 7; $sc.Save()"
-
-if not exist "%ALL_STARTUP%\ActivityX.lnk" (
-    echo WARNING: Could not create startup shortcut.
-)
-
-:: ── Start controller for verification ───────────────────────────────────────
+:: ── Start controller only (it will start the tracker) ───────────────────────
 echo Starting controller...
 pushd "!INSTALL_DIR!"
 start "" "DesktopWinHelper.exe"
